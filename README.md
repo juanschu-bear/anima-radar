@@ -1,0 +1,253 @@
+<div align="center">
+
+# ✦ ANIMARADAR
+
+### Find the right yes.
+
+**A human-led local-market intelligence platform for finding, understanding, scoring, and contacting the businesses most likely to buy from you.**
+
+![Stage](https://img.shields.io/badge/stage-building-f28b62?style=for-the-badge)
+![Frontend](https://img.shields.io/badge/frontend-Next.js%2016-111827?style=for-the-badge)
+![API](https://img.shields.io/badge/API-FastAPI-0f766e?style=for-the-badge)
+![Data](https://img.shields.io/badge/data-Supabase-3ecf8e?style=for-the-badge)
+
+</div>
+
+> [!IMPORTANT]
+> **This is now a standalone repository.** The folder contains the web app, API, Supabase migrations, prompt contracts, provider clients, and the local runbook. It is designed to connect to a Supabase project named `anima-radar`.
+
+<div align="center">
+
+```text
+  PROFILE  ───────►  RADAR  ───────►  READ  ───────►  SCORE  ───────►  HUMAN SEND
+  8 answers         city scan          websites       reasons          WhatsApp / email
+       ▲                                                          │
+       └────────────────────── replies + outcomes ◄──────────────┘
+```
+
+</div>
+
+## What exists right now
+
+| Layer | Location | Status |
+|---|---|---|
+| Product UI | [`web/`](web/) | Next.js App Router shell with Perfil, Radar, Prospectos, Enviar, Panel, and login |
+| API | [`radar-api/`](radar-api/) | FastAPI contracts, typed models, provider clients, LLM boundary, repository boundary, worker stages |
+| Database | [`supabase/`](supabase/) | Migration, RLS, tenant bootstrap function, local config, seed tenants |
+| Prompt contracts | [`prompts/`](prompts/) | Versioned ICP, extraction, scoring, and drafting prompts |
+| CLI | [`scripts/run_scan.py`](scripts/run_scan.py) | Starts a scan through the API contract |
+
+The local API store is still a development fallback. The Supabase schema and REST repository are prepared so the next connection step can use the real project without restructuring the product.
+
+## Supabase: connect this repo in five minutes
+
+### 1. Create or select the project
+
+Create a Supabase project with the project name:
+
+```text
+anima-radar
+```
+
+Copy the project URL, anon key, and service-role key from **Project Settings → API**.
+
+### 2. Link the local repository
+
+From this directory:
+
+```bash
+supabase login
+supabase link --project-ref YOUR_PROJECT_REF
+```
+
+### 3. Apply the schema
+
+```bash
+supabase db push
+```
+
+This creates tenants, users, profiles, scans, prospects, messages, outcomes, jobs, indexes, RLS policies, and `bootstrap_tenant()`.
+
+For a local Supabase database instead:
+
+```bash
+supabase start
+supabase db reset
+```
+
+### 4. Configure the applications
+
+```bash
+cp .env.example radar-api/.env
+cp web/.env.example web/.env.local
+```
+
+Fill in the real Supabase URL and keys. Never put `SUPABASE_SERVICE_ROLE_KEY` into the web app or commit either `.env` file.
+
+### 5. Create the first tenant
+
+After the owner signs in through the magic link, call the SQL function while authenticated:
+
+```sql
+select public.bootstrap_tenant('Andes Bloom', 'en-CA');
+```
+
+For Florum:
+
+```sql
+select public.bootstrap_tenant('Florum', 'ru');
+```
+
+The function reads the authenticated user from Supabase Auth, creates the tenant, and links the user as `owner`. The API must derive tenant identity from the verified user token and `public.users`; it must never trust a `tenant_id` sent in the request body.
+
+## Run locally
+
+### Web
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+### API
+
+Python 3.12 is required by the API package:
+
+```bash
+cd radar-api
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+radar-api
+```
+
+The health check is:
+
+```bash
+curl http://localhost:8000/health
+```
+
+### CLI scan contract
+
+```bash
+python scripts/run_scan.py \
+  --city Vancouver \
+  --country CA \
+  --category florist \
+  --category "flower shop"
+```
+
+## Environment variables
+
+| Variable | App | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | web | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | web | Browser-safe Supabase key |
+| `RADAR_API_URL` | web | FastAPI base URL |
+| `SUPABASE_URL` | API | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | API only | Server-side repository access; never expose to browser |
+| `ANTHROPIC_API_KEY` | API | ICP, extraction, scoring, drafting |
+| `GOOGLE_PLACES_API_KEY` | API | Google Places API (New) |
+| `EXA_API_KEY` | API | Non-map discovery |
+| `TWOGIS_API_KEY` | API | Russia/Kazakhstan discovery |
+| `JINA_API_KEY` | API | Optional Reader quota |
+| `RADAR_ENV` | API | `development` or `production` |
+| `RADAR_ALLOWED_ORIGINS` | API | CORS allow-list |
+
+## Architecture
+
+```text
+Next.js web
+  ├─ Supabase SSR session cookies
+  ├─ /api/* server proxy
+  └─ human review + manual send UI
+
+FastAPI radar-api
+  ├─ verify Supabase JWT
+  ├─ resolve auth user → tenant_id
+  ├─ enqueue work in public.jobs
+  ├─ Google Places / Exa / 2GIS discovery
+  ├─ Jina website enrichment
+  ├─ Anthropic structured outputs
+  └─ Supabase REST repository
+
+Supabase
+  ├─ Auth / magic links
+  ├─ Postgres / RLS per tenant
+  └─ jobs table as v1 queue
+```
+
+## Queue lifecycle
+
+```text
+queued → running → done
+              └──→ failed
+```
+
+Jobs are typed as `discover`, `enrich`, `score`, `draft`, or `learn`. Every stage is intended to be idempotent. The worker claims jobs from Supabase rather than keeping business state in process memory.
+
+## Channel policy
+
+| Market | Allowed | Guardrail |
+|---|---|---|
+| Canada | Published business contact, manual Instagram DM | No bulk email or automated WhatsApp to unpublished numbers; real sender and opt-out line |
+| RU / KZ / BY | Manual WhatsApp, Telegram, email | Show max 30 first contacts per day per sender number |
+| Default | Manual WhatsApp, email | Human approval required |
+
+Automated sending is explicitly out of scope for v1.
+
+## First tenants
+
+| Tenant | Market | First scenario |
+|---|---|---|
+| Andes Bloom | Vancouver, `en-CA` | Florists, wedding planners, event companies |
+| Florum | Moscow, Almaty, Minsk, `ru` | Florists and seasonal supply |
+
+## Verification commands
+
+```bash
+cd web
+npm run typecheck
+npm run lint
+npm run build
+
+cd ../radar-api
+python3.12 -m compileall app tests scripts
+```
+
+The acceptance scenarios in the product spec require a real Supabase project and the provider keys. Until those are configured, the UI and local development contracts can be verified, but live counts and real prospect quality cannot honestly be reported.
+
+## Dependencies
+
+### Web
+
+Next.js, React, TypeScript, Tailwind CSS, `@supabase/ssr`, and `@supabase/supabase-js`.
+
+### API
+
+FastAPI, Uvicorn, Pydantic, pydantic-settings, HTTPX, `supabase`, and the Anthropic Python SDK.
+
+## Repository map
+
+```text
+anima-radar/
+├── web/                         # Next.js frontend
+├── radar-api/                   # FastAPI backend
+│   ├── app/                     # API, models, providers, LLM, repository, worker
+│   └── tests/                   # deterministic pipeline tests
+├── supabase/
+│   ├── config.toml              # local Supabase configuration
+│   ├── migrations/              # production schema + RLS
+│   └── seed.sql                 # local demo tenants
+├── prompts/                     # versioned LLM prompt contracts
+├── scripts/                     # CLI helpers
+├── .env.example                 # connection template
+└── README.md                    # this runbook
+```
+
+## License / product status
+
+Private Anima family product. v1 is a human-approved outreach workflow. Instagram enrichment, automated WhatsApp sending, CRM integrations, and model training are intentionally deferred.

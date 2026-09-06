@@ -1,0 +1,9 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+
+:root { --paper: #f4efe5; --ink: #20251f; --accent: #d86f45; --muted: #82796c; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: "Plus Jakarta Sans", sans-serif; }
+h1, h2, h3 { font-family: "DM Serif Display", serif; font-weight: 400; }
+button, input, textarea, select { font: inherit; }
+.paper-grid { background-image: linear-gradient(rgba(32,37,31,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(32,37,31,.045) 1px, transparent 1px); background-size: 28px 28px; }

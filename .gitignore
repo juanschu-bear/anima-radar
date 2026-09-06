@@ -1,0 +1,7 @@
+web/node_modules/
+web/.next/
+radar-api/.venv/
+radar-api/.env
+radar-api/**/__pycache__/
+*.pyc
+web/tsconfig.tsbuildinfo

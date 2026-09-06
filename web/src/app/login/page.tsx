@@ -1,0 +1,5 @@
+"use client";
+
+import { FormEvent, useState } from "react";
+
+export default function LoginPage() { const [sent, setSent] = useState(false); function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setSent(true); } return <main className="paper-grid flex min-h-screen items-center justify-center px-5"><div className="w-full max-w-md rounded-3xl border border-black/10 bg-white/60 p-8"><p className="text-xs font-bold uppercase tracking-[.3em] text-[var(--accent)]">ANIMARADAR</p><h1 className="mt-4 text-5xl">Entra sin contraseña.</h1>{sent ? <p className="mt-6 text-sm leading-7">Revisa tu correo. Te enviamos un enlace mágico para continuar.</p> : <form onSubmit={submit} className="mt-8"><label className="text-sm font-semibold">Correo electrónico<input required type="email" className="mt-2 w-full rounded-xl border border-black/10 bg-transparent p-3 outline-none focus:border-[var(--accent)]" placeholder="tu@empresa.com" /></label><button className="mt-5 w-full rounded-full bg-[var(--ink)] px-5 py-3 text-sm font-bold text-[var(--paper)]">Enviar enlace mágico</button></form>}</div></main>; }
