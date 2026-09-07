@@ -39,6 +39,32 @@
 
 The local API store is still a development fallback. The Supabase schema and REST repository are prepared so the next connection step can use the real project without restructuring the product.
 
+## Feature map and live-readiness
+
+The interface exposes the full intended operator journey, but the current deployment is still a hybrid prototype. This distinction is deliberate: demo records are not presented as real company data.
+
+| Surface | Intended job | Current state |
+|---|---|---|
+| Overview | See the market state and the next action | Visual shell with demo metrics and signal atlas |
+| Business DNA | Define offer, fit, proof, language and exclusions | Form posts to the API; persistence/auth still required |
+| Radar scans | Discover businesses by market, radius and category | API contract exists; provider keys and live tenant auth required |
+| Prospects | Review sourced evidence and approve/discard | Review interaction is present; records are still sample data |
+| Outreach | Open approved messages manually in the available channel | Human-send UI is present; real messages need Supabase-backed records |
+| Learning Loop | Capture replies, meetings, orders and losses | Dedicated page added; outcome persistence is the next backend slice |
+| Settings | Configure workspace, language, connections and readiness | Dedicated page added; tenant persistence/auth is still required |
+
+### What must be connected before using a real company
+
+1. Supabase Auth magic-link login and the first tenant bootstrap.
+2. JWT tenant resolution in the FastAPI API, so every request is scoped to the signed-in workspace.
+3. A deployed `radar-api` URL in Vercel; the current web proxy falls back to `http://localhost:8000` only for development.
+4. Real provider credentials for Google Places and Exa, plus the configured LLM key for extraction, scoring and drafting.
+5. A Supabase-backed repository for profiles, scans, prospects, messages, outcomes and jobs. The schema and RLS policies exist; the API currently still uses `DevelopmentStore` by default.
+6. Worker execution for the database queue, retries, evidence collection and message drafting.
+7. A consent/approval policy and channel configuration for the company’s market. Automated sending remains intentionally out of scope for v1.
+
+The first live acceptance test should be: sign in → create the tenant → answer Business DNA → start one small scan → inspect sourced evidence → approve one message → manually send it → record the outcome in Learning Loop.
+
 ## Supabase: connect this repo in five minutes
 
 ### 1. Create or select the project
