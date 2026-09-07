@@ -20,7 +20,8 @@ export async function proxy(request: NextRequest) {
     },
   });
   const { data: { user } } = await supabase.auth.getUser();
-  const publicPath = request.nextUrl.pathname.startsWith("/login") || request.nextUrl.pathname.startsWith("/auth/callback");
+  const isAuthCodeLanding = request.nextUrl.pathname === "/" && request.nextUrl.searchParams.has("code");
+  const publicPath = request.nextUrl.pathname.startsWith("/login") || request.nextUrl.pathname.startsWith("/auth/callback") || isAuthCodeLanding;
   if (!user && !publicPath) return NextResponse.redirect(new URL("/login", request.url));
   return response;
 }
