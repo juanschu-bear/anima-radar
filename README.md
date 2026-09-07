@@ -68,6 +68,17 @@ supabase db push
 
 This creates tenants, users, profiles, scans, prospects, messages, outcomes, jobs, offers, campaigns, evidence, experiments, exclusions, business events, indexes, RLS policies, and `bootstrap_tenant()`.
 
+> [!WARNING]
+> **Migration order matters.** `002_acquisition_model.sql` depends on the tables from `001_initial_schema.sql`. Do not paste migration 002 by itself into the SQL Editor. The safest path is `supabase db push`, which applies both files in order. If using the SQL Editor manually, run the complete contents of `001_initial_schema.sql` first and `002_acquisition_model.sql` second.
+
+To diagnose a missing base table:
+
+```sql
+select to_regclass('public.tenants');
+```
+
+The expected result is `public.tenants`. If it returns `null`, apply migration 001 before retrying migration 002.
+
 For a local Supabase database instead:
 
 ```bash
