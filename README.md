@@ -33,7 +33,7 @@
 |---|---|---|
 | Product UI | [`web/`](web/) | Next.js App Router shell with Perfil, Radar, Prospectos, Enviar, Panel, and login |
 | API | [`radar-api/`](radar-api/) | FastAPI contracts, typed models, provider clients, LLM boundary, repository boundary, worker stages |
-| Database | [`supabase/`](supabase/) | Migration, RLS, tenant bootstrap function, local config, seed tenants |
+| Database | [`supabase/`](supabase/) | Migrations, RLS, tenant bootstrap function, local config, seed tenants |
 | Prompt contracts | [`prompts/`](prompts/) | Versioned ICP, extraction, scoring, and drafting prompts |
 | CLI | [`scripts/run_scan.py`](scripts/run_scan.py) | Starts a scan through the API contract |
 
@@ -66,7 +66,7 @@ supabase link --project-ref YOUR_PROJECT_REF
 supabase db push
 ```
 
-This creates tenants, users, profiles, scans, prospects, messages, outcomes, jobs, indexes, RLS policies, and `bootstrap_tenant()`.
+This creates tenants, users, profiles, scans, prospects, messages, outcomes, jobs, offers, campaigns, evidence, experiments, exclusions, business events, indexes, RLS policies, and `bootstrap_tenant()`.
 
 For a local Supabase database instead:
 
@@ -188,6 +188,19 @@ queued → running → done
 ```
 
 Jobs are typed as `discover`, `enrich`, `score`, `draft`, or `learn`. Every stage is intended to be idempotent. The worker claims jobs from Supabase rather than keeping business state in process memory.
+
+## Product model: offer → campaign → evidence → business result
+
+The product is intentionally not limited to flowers. Each tenant can define an approved `offer` with its real problem, deliverables, proof, allowed claims, excluded claims, and next step. A `campaign` then selects an offer, market, audience, sender, and test hypothesis.
+
+Every prospect can carry four visible research states:
+
+- **Evidence** — a sourced observation with URL, quote, type, and date.
+- **Hypothesis** — a useful but unconfirmed interpretation.
+- **Unknown** — a question that should not be silently invented.
+- **Next step** — the human question or action that resolves uncertainty.
+
+Business performance is tracked separately from reply volume: `sent → reply → qualified_interest → meeting → proposal → paid_order → repeat_order`. This keeps the product focused on actual commercial outcomes rather than vanity metrics.
 
 ## Channel policy
 

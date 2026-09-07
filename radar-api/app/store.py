@@ -32,7 +32,8 @@ class DevelopmentStore:
     def create_profile(self, answers: ProfileAnswers) -> ProfileResponse:
         record = ProfileRecord(id=uuid4(), answers=answers)
         record.icp = Icp(what_we_sell=answers.answers.get("answer-1", ""), differentiators=[answers.answers.get("answer-5", "")], proof=[answers.answers.get("answer-6", "")], ideal_customer={"types": [], "size": None, "geo": [], "buying_signals": [], "disqualifiers": []}, languages=[answers.market_lang])
-        record.search_plan = SearchPlan(sources=["google_places", "exa"], category_keywords={"google_places": ["florist", "flower shop"], "exa": ["wedding planner", "event company"]})
+        city_answer = answers.answers.get("answer-4", "").strip()
+        record.search_plan = SearchPlan(sources=["google_places", "exa"], category_keywords={"google_places": ["business in market", city_answer or "target city"], "exa": ["target company", "potential buyer"]})
         self.profiles[record.id] = record
         return ProfileResponse(id=record.id, icp=record.icp, search_plan=record.search_plan)
 
