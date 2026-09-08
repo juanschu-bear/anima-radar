@@ -61,7 +61,10 @@ export default function CompaniesPage() {
       setCompanies((current) => [...current, body.tenant]);
       setActiveId(body.tenant.id);
       setName("");
-      router.push("/perfil?setup=new-company");
+      const nextRoute = typeof body.tenant?.workspace_readiness?.next_route === "string"
+        ? body.tenant.workspace_readiness.next_route
+        : "/perfil";
+      router.push(`${nextRoute}?setup=new-company` as Route);
       router.refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : text("Could not create company", "No se pudo crear la empresa"));
@@ -80,14 +83,14 @@ export default function CompaniesPage() {
       setSwitching("");
       return;
     }
-    const targetCompany = companies.find((company) => company.id === id);
+    const targetCompany = body.tenant ?? companies.find((company) => company.id === id);
     const destination = copyCurrentProfile
       ? "/radar?setup=business-dna-copied"
       : targetCompany?.workspace_readiness?.next_route
         ? `${targetCompany.workspace_readiness.next_route}?tenant=${id}`
         : targetCompany?.has_profile
           ? `/panel?tenant=${id}`
-          : "/perfil?setup=new-company";
+          : `/perfil?tenant=${id}&setup=new-company`;
     router.push(destination as Route);
     router.refresh();
   }

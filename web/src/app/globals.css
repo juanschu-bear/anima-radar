@@ -72,3 +72,18 @@
 .error-view{margin-top:12px}.error-row{padding:18px 21px;border-top:1px solid var(--line)}.error-row:first-of-type{border-top:0}.error-row-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.error-row strong,.error-row small{display:block}.error-row small{margin-top:4px;color:var(--muted);font-size:10px}.error-row p{margin:12px 0 0;color:#d8dee8;font-size:12px;line-height:1.6}.error-row details{margin-top:14px}.error-row summary{cursor:pointer;color:var(--champagne-bright);font-size:11px}.error-row pre{overflow:auto;margin:12px 0 0;padding:14px;border:1px solid var(--line);border-radius:8px;background:rgba(4,11,20,.55);color:#c5d3de;font-size:11px;line-height:1.55}
 
 @media(max-width:720px){.draft-instruction-bar{grid-template-columns:1fr}.error-row-head{display:grid}}
+
+/* Prospect evidence and richer form controls. */
+.settings-fields textarea{width:100%;padding:12px;border:1px solid var(--line-strong);border-radius:5px;background:rgba(4,11,20,.55);color:var(--text);outline:none;resize:vertical;min-height:92px}
+.settings-fields textarea:focus{border-color:var(--champagne)}
+.research-panel{margin-top:24px;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.02)}
+.research-panel .panel-title{padding:16px 18px}
+.research-panel .panel-title h3{margin:0;font-size:13px;font-weight:600}
+.research-list{display:grid;gap:0}
+.research-item{display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;padding:14px 18px;border-top:1px solid var(--line)}
+.research-item:first-child{border-top:0}
+.research-item span{color:var(--muted);font-size:10px}
+.research-item strong,.research-item a{overflow-wrap:anywhere;color:var(--text);font-size:11px;font-weight:500;line-height:1.55}
+.research-item a{color:var(--cyan)}
+
+@media(max-width:720px){.research-item{grid-template-columns:1fr}}

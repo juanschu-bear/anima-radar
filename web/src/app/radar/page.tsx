@@ -198,6 +198,7 @@ export default function RadarPage() {
     setStarting(true);
     setNotice(null);
     setError(null);
+    const formElement = event.currentTarget;
 
     const categoryList = categories
       .split(",")
@@ -220,6 +221,7 @@ export default function RadarPage() {
       if (!response.ok) throw new Error(body.detail);
 
       const nextScan = body as Scan;
+      formElement.reset();
       setScans((current) => mergeScanIntoList(current, nextScan));
       setActiveScanId(nextScan.id);
       setNotice(
@@ -232,6 +234,7 @@ export default function RadarPage() {
       setCountry("");
       setRadius("15");
       setCategories("");
+      setSources(resolveDefaultSources(providers));
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : text("Could not start scan", "No se pudo iniciar el escaneo"),
@@ -422,6 +425,21 @@ export default function RadarPage() {
                 />
               </div>
             </fieldset>
+
+            <div className="scan-helper">
+              <strong>{text("About auto-discovery", "Sobre el auto-descubrimiento")}</strong>
+              <p>
+                {hasLiveProviders
+                  ? text(
+                      "Auto-discovery means AnimaRadar can query live external providers like Google Places or Exa for this scan. Manual fallback stays available when you want to add a company yourself or a provider returns nothing useful.",
+                      "Auto-descubrimiento significa que AnimaRadar puede consultar proveedores externos reales como Google Places o Exa para este escaneo. El fallback manual sigue disponible cuando quieres añadir una empresa tú mismo o un proveedor no devuelve nada útil.",
+                    )
+                  : text(
+                      "Auto-discovery is not active in this deployment yet because no live provider key is configured. Right now this screen still saves the market scan and hands you off to manual prospect capture.",
+                      "El auto-descubrimiento todavía no está activo en esta implementación porque no hay ninguna clave de proveedor real configurada. Por ahora esta pantalla guarda el escaneo de mercado y te lleva a la captura manual de prospectos.",
+                    )}
+              </p>
+            </div>
 
             <button className="button button-primary" disabled={starting || !sources.length || Boolean(activeScanId)}>
               {starting

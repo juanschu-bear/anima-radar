@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isPlatformAdmin } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireWorkspaceUser } from "@/lib/api-auth";
+import { deriveWorkspaceReadiness } from "@/lib/workspace-readiness";
 
 export async function POST(request: Request) {
   const auth = await requireWorkspaceUser();
@@ -29,5 +30,32 @@ export async function POST(request: Request) {
   }
   const { error } = await admin.from("users").update({ tenant_id: tenant.id }).eq("id", auth.user.id);
   if (error) return NextResponse.json({ detail: error.message }, { status: 502 });
-  return NextResponse.json({ tenant, profile_copied: profileCopied });
+  const [profiles, scans, prospects, outcomes] = await Promise.all([
+    admin.from("business_profiles").select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id),
+    admin.from("scans").select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id),
+    admin.from("prospects").select("id,status").eq("tenant_id", tenant.id),
+    admin.from("outcomes").select("id,kind").eq("tenant_id", tenant.id),
+  ]);
+
+  const prospectRows = prospects.data ?? [];
+  const outcomeRows = outcomes.data ?? [];
+  const metrics = {
+    profiles: profiles.count ?? 0,
+    scans: scans.count ?? 0,
+    prospects: prospectRows.length,
+    approved: prospectRows.filter((row) => row.status === "approved").length,
+    sent: prospectRows.filter((row) => ["sent", "replied", "converted", "lost"].includes(row.status)).length,
+    outcomes: outcomeRows.length,
+    positive_replies: outcomeRows.filter((row) => row.kind === "replied_positive").length,
+  };
+
+  return NextResponse.json({
+    tenant: {
+      ...tenant,
+      has_profile: metrics.profiles > 0,
+      metrics,
+      workspace_readiness: deriveWorkspaceReadiness(metrics),
+    },
+    profile_copied: profileCopied,
+  });
 }

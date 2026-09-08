@@ -64,3 +64,6 @@ class HealthResponse(BaseModel):
     ok: Literal[True]
     service: Literal["radar-api"]
     environment: str
+    mode: Literal["development-store", "supabase-queue"]
+    supabase_configured: bool
+    queue_ready: bool

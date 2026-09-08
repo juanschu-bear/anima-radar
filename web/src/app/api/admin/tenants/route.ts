@@ -67,7 +67,24 @@ export async function POST(request: Request) {
     await auth.admin.from("tenants").delete().eq("id", data.id);
     return NextResponse.json({ detail: "The company could not be activated. Nothing was created." }, { status: 502 });
   }
-  return NextResponse.json({ tenant: { ...data, has_profile: false }, active_tenant_id: data.id }, { status: 201 });
+  const metrics = {
+    profiles: 0,
+    scans: 0,
+    prospects: 0,
+    approved: 0,
+    sent: 0,
+    outcomes: 0,
+    positive_replies: 0,
+  };
+  return NextResponse.json({
+    tenant: {
+      ...data,
+      has_profile: false,
+      metrics,
+      workspace_readiness: deriveWorkspaceReadiness(metrics),
+    },
+    active_tenant_id: data.id,
+  }, { status: 201 });
 }
 
 function countByTenant(rows: Array<{ tenant_id: string }>) {

@@ -27,6 +27,8 @@ type Prospect = {
   instagram: string | null;
   rating: number | null;
   review_count: number | null;
+  raw?: unknown;
+  enrichment?: unknown;
   score: number | null;
   score_reasons: unknown;
   best_channel: string | null;
@@ -456,11 +458,33 @@ export default function ProspectsPage() {
               <p className="review-meta">{text("Best available channel", "Mejor canal disponible")}: {selected.best_channel ?? text("not identified", "no identificado")}</p>
 
               <div className="prospect-facts">
+                <div><span>{text("Source", "Fuente")}</span><strong>{sourceLabel(selected.source, text)}</strong></div>
                 <div><span>{text("Address", "Dirección")}</span><strong>{selected.address ?? "—"}</strong></div>
                 <div><span>{text("Website", "Sitio web")}</span><strong>{selected.website ?? "—"}</strong></div>
                 <div><span>{text("Email", "Correo")}</span><strong>{selected.email ?? "—"}</strong></div>
                 <div><span>{text("Phone", "Teléfono")}</span><strong>{selected.phone ?? "—"}</strong></div>
                 <div><span>{text("Rating", "Valoración")}</span><strong>{selected.rating ? `${selected.rating} · ${selected.review_count ?? 0} ${text("reviews", "reseñas")}` : "—"}</strong></div>
+              </div>
+
+              <div className="research-panel">
+                <div className="panel-title">
+                  <h3>{text("Why this company surfaced", "Por qué apareció esta empresa")}</h3>
+                  <span className="feature-status">{text("Observed data", "Datos observados")}</span>
+                </div>
+                <div className="research-list">
+                  {extractResearchSignals(selected, text).map((item) => (
+                    <div className="research-item" key={`${item.label}-${item.value}`}>
+                      <span>{item.label}</span>
+                      {item.href ? (
+                        <a href={item.href} target="_blank" rel="noreferrer">
+                          {item.value}
+                        </a>
+                      ) : (
+                        <strong>{item.value}</strong>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="review-draft">
@@ -558,6 +582,9 @@ export default function ProspectsPage() {
               <label>{text("Country code", "Código de país")}<input name="country" maxLength={2} placeholder="EC" /></label>
               <label>{text("Website", "Sitio web")}<input name="website" placeholder="preserva.com" /></label>
               <label>{text("Phone", "Teléfono")}<input name="phone" placeholder="+593..." /></label>
+              <label>{text("Email", "Correo")}<input name="email" placeholder="hello@preserva.com" /></label>
+              <label>{text("Instagram", "Instagram")}<input name="instagram" placeholder="@preserva" /></label>
+              <label>{text("Why add this company?", "¿Por qué añadir esta empresa?")}<textarea name="note" rows={3} placeholder={text("Short context for later review", "Contexto breve para la revisión")} /></label>
               <button className="button button-ghost" disabled={savingManual}>{savingManual ? text("Saving…", "Guardando…") : text("Add manual prospect", "Añadir prospecto manual")}</button>
             </form>
           </section>
@@ -565,4 +592,97 @@ export default function ProspectsPage() {
       )}
     </AppShell>
   );
+}
+
+function sourceLabel(source: string, text: (english: string, spanish: string) => string) {
+  if (source === "google_places") return "Google Places";
+  if (source === "exa") return "Exa";
+  if (source === "manual") return text("Manual entry", "Entrada manual");
+  return source;
+}
+
+function extractResearchSignals(
+  prospect: Prospect,
+  text: (english: string, spanish: string) => string,
+) {
+  const raw = readObject(prospect.raw);
+  const enrichment = readObject(prospect.enrichment);
+  const items: Array<{ label: string; value: string; href?: string }> = [
+    {
+      label: text("Best channel", "Mejor canal"),
+      value: prospect.best_channel ?? text("Not identified yet", "Todavía no identificado"),
+    },
+  ];
+
+  if (prospect.source === "manual") {
+    const note = typeof raw?.manual_note === "string" ? raw.manual_note.trim() : "";
+    if (note) {
+      items.push({
+        label: text("Operator note", "Nota del operador"),
+        value: note,
+      });
+    }
+  }
+
+  if (typeof raw?.formattedAddress === "string" && raw.formattedAddress.trim()) {
+    items.push({
+      label: text("Observed address", "Dirección observada"),
+      value: raw.formattedAddress.trim(),
+    });
+  }
+
+  if (typeof raw?.primaryType === "string" && raw.primaryType.trim()) {
+    items.push({
+      label: text("Observed category", "Categoría observada"),
+      value: raw.primaryType.trim(),
+    });
+  }
+
+  if (typeof raw?.businessStatus === "string" && raw.businessStatus.trim()) {
+    items.push({
+      label: text("Business status", "Estado del negocio"),
+      value: raw.businessStatus.trim(),
+    });
+  }
+
+  if (typeof raw?.url === "string" && raw.url.trim()) {
+    items.push({
+      label: text("Web source", "Fuente web"),
+      value: compactSnippet(raw.url, 72),
+      href: raw.url,
+    });
+  }
+
+  if (typeof prospect.website === "string" && prospect.website.trim()) {
+    items.push({
+      label: text("Company website", "Sitio web de la empresa"),
+      value: compactSnippet(prospect.website, 72),
+      href: prospect.website,
+    });
+  }
+
+  if (typeof raw?.text === "string" && raw.text.trim()) {
+    items.push({
+      label: text("Observed web evidence", "Evidencia web observada"),
+      value: compactSnippet(raw.text, 190),
+    });
+  }
+
+  if (typeof enrichment?.mode === "string" && enrichment.mode.trim()) {
+    items.push({
+      label: text("Capture mode", "Modo de captura"),
+      value: enrichment.mode.trim(),
+    });
+  }
+
+  return items;
+}
+
+function readObject(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function compactSnippet(value: string, limit: number) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length <= limit ? normalized : `${normalized.slice(0, limit - 1)}…`;
 }

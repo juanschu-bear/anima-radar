@@ -10,7 +10,7 @@ export async function GET() {
   const [{ data, error }, { data: tenant }, { data: profile }] = await Promise.all([
     admin
       .from("prospects")
-      .select("id,scan_id,source,name,category,address,city,country,website,phone,email,instagram,rating,review_count,score,score_reasons,best_channel,status,created_at")
+      .select("id,scan_id,source,name,category,address,city,country,website,phone,email,instagram,rating,review_count,raw,enrichment,score,score_reasons,best_channel,status,created_at")
       .eq("tenant_id", auth.profile.tenant_id)
       .order("score", { ascending: false, nullsFirst: false })
       .limit(100),
