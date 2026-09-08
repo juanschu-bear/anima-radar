@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildChannelHref, detectBestChannel } from "@/lib/channel-policy";
-import { categoryShiftFor } from "@/lib/rubric-adjustments";
+import { categoryShiftFor, reasonShiftFor } from "@/lib/rubric-adjustments";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -232,14 +232,16 @@ export async function createOrRefreshMessageDraft({
   profileAnswers,
   prospect,
   authorName,
+  instruction,
 }: {
   admin: AdminClient;
   tenant: TenantRecord;
   profileAnswers: RawAnswers;
   prospect: ProspectRecord;
   authorName?: string | null;
+  instruction?: string | null;
 }) {
-  const drafts = buildDraftSequence({ tenant, profileAnswers, prospect, authorName });
+  const drafts = buildDraftSequence({ tenant, profileAnswers, prospect, authorName, instruction });
   const { error } = await admin
     .from("messages")
     .upsert(
@@ -275,6 +277,7 @@ export function buildDraftMessage({
   profileAnswers,
   prospect,
   authorName,
+  instruction,
 }: {
   tenant: TenantRecord;
   profileAnswers: RawAnswers;
@@ -289,6 +292,7 @@ export function buildDraftMessage({
     best_channel: string;
   };
   authorName?: string | null;
+  instruction?: string | null;
 }) {
   const language = preferredLanguage(tenant.default_market_lang, profileAnswers);
   const offer = firstSentence(profileAnswers["answer-1"]);
@@ -311,12 +315,14 @@ export function buildDraftMessage({
       : [prospect.category, prospect.city].filter(Boolean).join(" · ");
   const ask = language === "es" ? followUp : followUp;
 
-  return {
+  const draft = {
     lang: language,
     channel: prospect.best_channel || "business_published_contact",
     subject: language === "es" ? `Idea para ${prospect.name}` : `Idea for ${prospect.name}`,
     body: [intro, context ? context : null, value.trim(), ask, language === "es" ? `Saludos,\n${signedBy}` : `Best,\n${signedBy}`].filter(Boolean).join("\n\n"),
   };
+
+  return applyDraftInstruction(draft, instruction);
 }
 
 function buildDraftSequence({
@@ -324,13 +330,15 @@ function buildDraftSequence({
   profileAnswers,
   prospect,
   authorName,
+  instruction,
 }: {
   tenant: TenantRecord;
   profileAnswers: RawAnswers;
   prospect: ProspectRecord;
   authorName?: string | null;
+  instruction?: string | null;
 }) {
-  const primary = buildDraftMessage({ tenant, profileAnswers, prospect, authorName });
+  const primary = buildDraftMessage({ tenant, profileAnswers, prospect, authorName, instruction });
   const signer = extractSignerName(profileAnswers["answer-7"]) || authorName || tenant.name;
   const language = primary.lang;
   const checkIn = language === "es"
@@ -359,7 +367,7 @@ function buildDraftSequence({
       subject: primary.subject,
       body: [finalNudge, closer, language === "es" ? `Gracias,\n${signer}` : `Thanks,\n${signer}`].join("\n\n"),
     },
-  ];
+  ].map((draft, index) => applyDraftInstruction(draft, index === 0 ? instruction : null));
 }
 
 export function prospectStatusFromOutcome(kind: OutcomeKind) {
@@ -525,6 +533,24 @@ function scoreProspect(seed: ProspectSeed, answers: RawAnswers, icp: unknown, te
     }
   }
 
+  const learnedReasonShift = clamp(
+    reasons
+      .slice(0, 3)
+      .reduce((total, reason) => total + reasonShiftFor(icp, reason), 0),
+    -10,
+    10,
+  );
+  if (learnedReasonShift !== 0) {
+    score += learnedReasonShift;
+    if (reasons.length < 3) {
+      reasons.push(
+        learnedReasonShift > 0
+          ? "Recent outcomes are reinforcing similar reasons"
+          : "Recent outcomes are weakening similar reasons",
+      );
+    }
+  }
+
   score = clamp(score, 8, 98);
 
   while (reasons.length < 3) {
@@ -564,6 +590,78 @@ function addDays(days: number) {
   const date = new Date();
   date.setDate(date.getDate() + days);
   return date.toISOString();
+}
+
+function applyDraftInstruction<T extends { subject: string | null; body: string; channel: string; lang: string }>(
+  draft: T,
+  instruction?: string | null,
+) : T {
+  const normalized = compactWhitespace(instruction ?? "").toLowerCase();
+  if (!normalized) return draft;
+
+  let subject = draft.subject ?? "";
+  let body = draft.body;
+
+  if (normalized.includes("short") || normalized.includes("shorter") || normalized.includes("corto") || normalized.includes("corta") || normalized.includes("más corto")) {
+    body = shortenDraft(body, 72);
+  }
+
+  const mentionMatch = normalized.match(/(?:mention|menciona|mentionne)\s+(.+)$/i);
+  if (mentionMatch?.[1]) {
+    const requestedTopic = mentionMatch[1].trim().replace(/[.]+$/, "");
+    if (requestedTopic) {
+      const sentence = draft.lang === "es"
+        ? `También lo conecto con ${requestedTopic}.`
+        : `I also want to connect this to ${requestedTopic}.`;
+      body = injectBeforeSignature(body, sentence);
+      if (!subject) {
+        subject = draft.lang === "es" ? `Idea sobre ${requestedTopic}` : `Idea about ${requestedTopic}`;
+      }
+    }
+  }
+
+  if (normalized.includes("direct") || normalized.includes("more direct") || normalized.includes("más directo") || normalized.includes("mas directo")) {
+    body = replaceAsk(body, draft.lang === "es"
+      ? "Si esto encaja, propongo una llamada breve esta semana."
+      : "If this fits, I suggest a short call this week.");
+  }
+
+  if (normalized.includes("warm") || normalized.includes("friendlier") || normalized.includes("más cálido") || normalized.includes("mas calido")) {
+    body = replaceAsk(body, draft.lang === "es"
+      ? "Si te parece bien, encantado de coordinar una llamada breve."
+      : "If it feels useful, I’d be glad to coordinate a short call.");
+  }
+
+  return {
+    ...draft,
+    subject: subject || draft.subject,
+    body,
+  };
+}
+
+function shortenDraft(body: string, maxWords: number) {
+  const parts = body.split("\n\n").filter(Boolean);
+  const signature = parts.length > 1 ? parts[parts.length - 1] : "";
+  const message = parts.slice(0, signature ? -1 : parts.length).join(" ").trim();
+  const words = message.split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return body;
+  const shortened = `${words.slice(0, maxWords).join(" ").replace(/[,:;]$/, "")}…`;
+  return signature ? `${shortened}\n\n${signature}` : shortened;
+}
+
+function injectBeforeSignature(body: string, sentence: string) {
+  const parts = body.split("\n\n");
+  if (parts.length < 2) return `${body}\n\n${sentence}`;
+  const signature = parts.pop() ?? "";
+  return [...parts, sentence, signature].join("\n\n");
+}
+
+function replaceAsk(body: string, nextAsk: string) {
+  const parts = body.split("\n\n");
+  if (parts.length < 3) return body;
+  const signature = parts.pop() ?? "";
+  parts[parts.length - 1] = nextAsk;
+  return [...parts, signature].join("\n\n");
 }
 
 async function searchGooglePlaces({

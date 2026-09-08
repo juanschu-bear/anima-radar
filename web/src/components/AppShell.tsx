@@ -8,7 +8,7 @@ import { isCompanyAdmin, isPlatformAdmin } from "@/lib/access";
 import { LanguageToggle, useLanguage } from "@/components/LanguageProvider";
 import { createClient } from "@/lib/supabase/client";
 
-type IconName = "overview" | "profile" | "radar" | "prospects" | "send" | "learn" | "settings";
+type IconName = "overview" | "profile" | "radar" | "prospects" | "send" | "learn" | "settings" | "errors";
 type AccessLevel = "platform_admin" | "company_admin" | "member" | null;
 type CompanyRecord = { id: string; name: string };
 type UserProfile = { tenant_id: string; role?: string | null; platform_admin?: boolean | null; full_name?: string | null };
@@ -80,6 +80,13 @@ function Icon({ name }: { name: IconName }) {
         <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-1.8 1.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5v.1h-2.6v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-1.8-1.8.1-.1A1.7 1.7 0 0 0 8 15a1.7 1.7 0 0 0-1.5-1H6v-2.6h.5A1.7 1.7 0 0 0 8 10a1.7 1.7 0 0 0-.3-1.9l-.1-.1 1.8-1.8.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V5h2.6v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 1.8 1.8-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.1V14h-.1a1.7 1.7 0 0 0-1.5 1Z" />
       </>
     ),
+    errors: (
+      <>
+        <path d="M12 9v4" />
+        <path d="M12 17h.01" />
+        <path d="M10.3 3.9 2.6 18a2 2 0 0 0 1.8 3h15.2a2 2 0 0 0 1.8-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+      </>
+    ),
   };
 
   return <svg aria-hidden="true" {...common}>{paths[name]}</svg>;
@@ -123,6 +130,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         ? text("Users", "Usuarios")
         : pathname === "/learning-loop"
           ? text("Learning loop", "Ciclo de aprendizaje")
+          : pathname === "/errores"
+            ? text("Errors", "Errores")
           : pathname === "/settings"
             ? text("Settings", "Configuración")
             : navLabels[companyNav.find((item) => item[1] === pathname)?.[0] ?? "overview"];
@@ -303,6 +312,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Link href={"/learning-loop" as Route} className={pathname === "/learning-loop" ? "active" : ""}>
             <Icon name="learn" />
             <span>{text("Learning loop", "Ciclo de aprendizaje")}</span>
+          </Link>
+          <Link href={"/errores" as Route} className={pathname === "/errores" ? "active" : ""}>
+            <Icon name="errors" />
+            <span>{text("Errors", "Errores")}</span>
           </Link>
           <Link href={"/settings" as Route} className={pathname === "/settings" ? "active" : ""}>
             <Icon name="settings" />

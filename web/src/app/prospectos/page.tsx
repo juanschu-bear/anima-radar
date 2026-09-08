@@ -69,6 +69,8 @@ export default function ProspectsPage() {
   const [bulkThreshold, setBulkThreshold] = useState("70");
   const [bulkSaving, setBulkSaving] = useState(false);
   const [draftEdits, setDraftEdits] = useState<Record<string, { subject: string; body: string }>>({});
+  const [redraftInstruction, setRedraftInstruction] = useState("");
+  const [redrafting, setRedrafting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const draftBodyRef = useRef<HTMLTextAreaElement | null>(null);
@@ -284,6 +286,7 @@ export default function ProspectsPage() {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail);
+      formElement.reset();
       setProspects((current) => [body.prospect, ...current]);
       setSelectedId(body.prospect.id);
       if (body.prospect.draft_preview) {
@@ -301,11 +304,43 @@ export default function ProspectsPage() {
           "Prospecto manual añadido. Puedes revisarlo y aprobarlo inmediatamente.",
         ),
       );
-      formElement.reset();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : text("Could not create prospect", "No se pudo crear el prospecto"));
     } finally {
       setSavingManual(false);
+    }
+  }
+
+  async function redraftSelected() {
+    if (!selected || !redraftInstruction.trim()) return;
+    setRedrafting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/prospects/${selected.id}/redraft`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ instruction: redraftInstruction }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.detail);
+      setDraftEdits((current) => ({
+        ...current,
+        [selected.id]: {
+          subject: body.preview?.subject ?? "",
+          body: body.preview?.body ?? "",
+        },
+      }));
+      setNotice(
+        text(
+          "Draft regenerated from your instruction. Review it, then approve when it reads right.",
+          "El borrador se regeneró con tu instrucción. Revísalo y aprueba cuando suene bien.",
+        ),
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : text("Could not redraft this message", "No se pudo regenerar este mensaje"));
+    } finally {
+      setRedrafting(false);
     }
   }
 
@@ -432,6 +467,22 @@ export default function ProspectsPage() {
                 <div className="panel-title">
                   <h3>{text("Draft before approval", "Borrador antes de aprobar")}</h3>
                   <span className="feature-status">{text("Editable", "Editable")}</span>
+                </div>
+
+                <div className="draft-instruction-bar">
+                  <input
+                    value={redraftInstruction}
+                    onChange={(event) => setRedraftInstruction(event.target.value)}
+                    placeholder={text("e.g. shorter, mention weddings, make it more direct", "p. ej. más corto, menciona bodas, hazlo más directo")}
+                  />
+                  <button
+                    type="button"
+                    className="button button-ghost"
+                    disabled={!selectedDraft || redrafting || redraftInstruction.trim().length < 3}
+                    onClick={() => void redraftSelected()}
+                  >
+                    {redrafting ? text("Redrafting…", "Regenerando…") : text("Redraft from instruction", "Regenerar desde instrucción")}
+                  </button>
                 </div>
 
                 {selectedDraft ? (

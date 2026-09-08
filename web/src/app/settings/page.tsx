@@ -254,6 +254,21 @@ export default function SettingsPage() {
           {system?.actor.platform_admin && <Link href="/admin/companies">{text("Open companies", "Abrir empresas")} ↗</Link>}
         </p>
       </section>
+
+      <section className="readiness-note">
+        <div>
+          <p className="eyebrow">{text("Diagnostics", "Diagnóstico")}</p>
+          <h2>{text("When something breaks, it should be visible.", "Cuando algo falla, debe verse.")}</h2>
+        </div>
+
+        <p>
+          {text(
+            "Open the error view to inspect failed scans and jobs for the active company instead of guessing where the workflow stopped.",
+            "Abre la vista de errores para inspeccionar escaneos y jobs fallidos de la empresa activa en vez de adivinar dónde se detuvo el flujo.",
+          )}{" "}
+          <Link href={"/errores" as Route}>{text("Open errors", "Abrir errores")} ↗</Link>
+        </p>
+      </section>
     </AppShell>
   );
 }

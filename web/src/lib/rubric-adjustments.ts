@@ -68,6 +68,15 @@ export function categoryShiftFor(adjustments: unknown, category: string | null |
   return match?.shift ?? 0;
 }
 
+export function reasonShiftFor(adjustments: unknown, reason: string | null | undefined) {
+  const label = normalizeLabel(reason);
+  if (!label) return 0;
+  const rubric = readRubricAdjustments(adjustments);
+  if (!rubric) return 0;
+  const match = rubric.reasons.find((entry) => entry.label.toLowerCase() === label.toLowerCase());
+  return match?.shift ?? 0;
+}
+
 export function readRubricAdjustments(input: unknown): RubricAdjustments | null {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
   const source = "rubric_adjustments" in input ? (input as { rubric_adjustments?: unknown }).rubric_adjustments : input;
