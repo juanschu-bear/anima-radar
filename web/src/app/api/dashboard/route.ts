@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireWorkspaceUser } from "@/lib/api-auth";
+import { readRubricAdjustments } from "@/lib/rubric-adjustments";
 import { loadLatestTenantScan } from "@/lib/scan-queries";
 import { deriveWorkspaceReadiness } from "@/lib/workspace-readiness";
 
@@ -12,7 +13,7 @@ export async function GET() {
 
   const admin = createAdminClient();
   const tenantId = auth.profile.tenant_id;
-  const [tenant, profiles, scans, prospects, activeProspects, approvedProspects, sentProspects, replies, meetings, orders, messages, outcomes, latestScan, sentMessageRows, outcomeRows, prospectRows] = await Promise.all([
+  const [tenant, profiles, scans, prospects, activeProspects, approvedProspects, sentProspects, replies, meetings, orders, messages, outcomes, latestScan, sentMessageRows, outcomeRows, prospectRows, latestProfile] = await Promise.all([
     admin.from("tenants").select("id,name,default_market_lang").eq("id", tenantId).single(),
     admin.from("business_profiles").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
     admin.from("scans").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
@@ -29,6 +30,7 @@ export async function GET() {
     admin.from("messages").select("sent_at,edited").eq("tenant_id", tenantId).not("sent_at", "is", null),
     admin.from("outcomes").select("kind,created_at").eq("tenant_id", tenantId).order("created_at", { ascending: true }),
     admin.from("prospects").select("status,category,score_reasons").eq("tenant_id", tenantId),
+    admin.from("business_profiles").select("icp").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
 
   if (tenant.error) return NextResponse.json({ detail: tenant.error.message }, { status: 502 });
@@ -58,6 +60,7 @@ export async function GET() {
     counts,
     timeline,
     insights,
+    rubric_adjustments: readRubricAdjustments(latestProfile.data?.icp),
     workspace_readiness: deriveWorkspaceReadiness({
       profiles: counts.profiles,
       scans: counts.scans,
