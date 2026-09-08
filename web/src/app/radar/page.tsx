@@ -11,9 +11,10 @@ type Scan = { id: string; status: string; city: string; country: string; radius_
 export default function RadarPage() {
   const router = useRouter();
   const { language, text } = useLanguage();
+  const [setupCode] = useState<string | null>(() => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("setup") : null);
   const [scans, setScans] = useState<Scan[]>([]);
   const [companyName, setCompanyName] = useState("");
-  const [setupComplete, setSetupComplete] = useState(false);
+  const [setupComplete, setSetupComplete] = useState(() => Boolean(typeof window !== "undefined" && new URLSearchParams(window.location.search).get("setup")?.startsWith("business-dna")));
   const [providers, setProviders] = useState({ google_places: false, exa: false, manual: true });
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
@@ -22,7 +23,6 @@ export default function RadarPage() {
 
   useEffect(() => {
     let live = true;
-    const arrivedFromSetup = new URLSearchParams(window.location.search).get("setup")?.startsWith("business-dna") === true;
     Promise.all([fetch("/api/scans", { cache: "no-store" }), fetch("/api/workspace", { cache: "no-store" })])
       .then(async ([scanResponse, workspaceResponse]) => {
         const scanBody = await scanResponse.json();
@@ -33,13 +33,19 @@ export default function RadarPage() {
           setScans(scanBody.scans ?? []);
           setProviders(scanBody.providers ?? { google_places: false, exa: false, manual: true });
           setCompanyName(workspaceBody.tenant?.name ?? "");
-          setSetupComplete(arrivedFromSetup);
         }
       })
       .catch((cause) => { if (live) setError(cause instanceof Error ? cause.message : text("Could not load scans", "No se pudieron cargar los escaneos")); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
   }, [text]);
+  useEffect(() => {
+    if (!setupCode?.startsWith("business-dna")) return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete("setup");
+    const nextQuery = params.toString();
+    window.history.replaceState({}, "", nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname);
+  }, [setupCode]);
 
   async function startScan(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

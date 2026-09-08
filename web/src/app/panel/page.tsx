@@ -15,11 +15,19 @@ export default function PanelPage() {
   const { language, text } = useLanguage();
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [queryNoticeCode] = useState<string | null>(() => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("notice") : null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { let live = true; fetch("/api/dashboard", { cache: "no-store" }).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.detail); if (live) setDashboard(body as Dashboard); }).catch((cause) => { if (live) setError(cause instanceof Error ? cause.message : text("Could not load workspace", "No se pudo cargar el espacio")); }); return () => { live = false; }; }, [text]);
-  const queryNotice = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("notice") === "company-setup-pending"
+  const queryNotice = queryNoticeCode === "company-setup-pending"
     ? text("This company is not configured yet. Ask the platform owner to complete the Business DNA before the team starts working here.", "Esta empresa todavía no está configurada. Pide al propietario de la plataforma que complete el ADN del negocio antes de que el equipo empiece a trabajar aquí.")
     : null;
+  useEffect(() => {
+    if (queryNoticeCode !== "company-setup-pending") return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete("notice");
+    const nextQuery = params.toString();
+    window.history.replaceState({}, "", nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname);
+  }, [queryNoticeCode]);
   const locale = language === "es" ? "es-EC" : "en-US";
   const today = new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" }).format(new Date());
   const ready = dashboard && dashboard.counts.profiles > 0;

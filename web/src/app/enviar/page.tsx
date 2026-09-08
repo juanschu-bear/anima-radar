@@ -8,11 +8,18 @@ import { useLanguage } from "@/components/LanguageProvider";
 type Message = { id: string; channel: string; channel_url?: string | null; subject: string | null; body: string; due_at: string | null; sent_at: string | null; created_at: string; prospects: { name?: string; status?: string; best_channel?: string; email?: string | null; phone?: string | null; website?: string | null } | null };
 
 export default function SendPage() {
-  const { text } = useLanguage(); const [messages, setMessages] = useState<Message[]>([]); const [loading, setLoading] = useState(true); const [copied, setCopied] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null); const [error, setError] = useState<string | null>(null);
+  const { text } = useLanguage(); const [incomingNoticeCode] = useState<string | null>(() => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("notice") : null); const [messages, setMessages] = useState<Message[]>([]); const [loading, setLoading] = useState(true); const [copied, setCopied] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null); const [error, setError] = useState<string | null>(null);
   useEffect(() => { fetch("/api/messages", { cache: "no-store" }).then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.detail); setMessages(body.messages ?? []); }).catch((cause) => setError(cause instanceof Error ? cause.message : text("Could not load messages", "No se pudieron cargar los mensajes"))).finally(() => setLoading(false)); }, [text]);
-  const queryNotice = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("notice") === "draft-ready"
+  const queryNotice = incomingNoticeCode === "draft-ready"
     ? text("The draft is ready. Open the right channel, send it yourself, then mark it as sent.", "El borrador ya está listo. Abre el canal adecuado, envíalo tú mismo y luego márcalo como enviado.")
     : null;
+  useEffect(() => {
+    if (incomingNoticeCode !== "draft-ready") return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete("notice");
+    const nextQuery = params.toString();
+    window.history.replaceState({}, "", nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname);
+  }, [incomingNoticeCode]);
   async function copy(message: Message) { await navigator.clipboard.writeText(message.body); setCopied(message.id); }
   async function mark(messageId: string, action: "mark_sent" | "mark_unsent") {
     const response = await fetch("/api/messages", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: messageId, action }) });

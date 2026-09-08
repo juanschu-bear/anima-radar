@@ -30,6 +30,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [setupCode] = useState<string | null>(() => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("setup") : null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -76,10 +77,16 @@ export default function ProfilePage() {
     return () => { active = false; };
   }, [text]);
 
-  const querySetup = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("setup");
-  const setupNotice = querySetup === "new-company"
+  const setupNotice = setupCode === "new-company"
     ? text("Company created. Next, define the Business DNA for this workspace so the radar can use real criteria.", "Empresa creada. Ahora define el ADN del negocio de este espacio para que el radar use criterios reales.")
     : null;
+  useEffect(() => {
+    if (setupCode !== "new-company") return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete("setup");
+    const nextQuery = params.toString();
+    window.history.replaceState({}, "", nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname);
+  }, [setupCode]);
   const draftNotice = hasLocalDraft
     ? hasServerProfile
       ? text(`You are editing a browser draft for ${companyName || "this company"}. A previously saved company version also exists in Supabase until you save again.`, `Estás editando un borrador del navegador para ${companyName || "esta empresa"}. También existe una versión guardada en Supabase hasta que vuelvas a guardar.`)
