@@ -23,6 +23,7 @@ export default function ProfilePage() {
   const { language, text } = useLanguage();
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [canEdit, setCanEdit] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -37,6 +38,7 @@ export default function ProfilePage() {
         if (!active) return;
         const currentTenantId = typeof body.tenant_id === "string" ? body.tenant_id : null;
         const serverAnswers = isAnswerRecord(body.profile?.raw_answers) ? body.profile.raw_answers : {};
+        setCanEdit(body.can_edit !== false);
         let draftAnswers: Record<string, string> = {};
         if (currentTenantId) {
           const storedDraft = window.localStorage.getItem(draftKey(currentTenantId));
@@ -73,6 +75,7 @@ export default function ProfilePage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canEdit) return;
     setSaving(true);
     setSaved(false);
     setSessionExpired(false);
@@ -97,7 +100,7 @@ export default function ProfilePage() {
       setSaving(false);
     }
   }
-  return <AppShell><div className="page-toolbar"><SectionHeading eyebrow={text("Business DNA / profile", "ADN del negocio / perfil")} title={text("Tell us what makes you a fit.", "Cuéntanos qué te hace encajar.")} detail={text("Your answers become the real lens AnimaRadar uses for this company. They can be edited at any time.", "Tus respuestas se convierten en el criterio real que AnimaRadar usa para esta empresa. Puedes editarlas en cualquier momento.")} /><ButtonArrow href="/radar">{text("Continue to radar", "Continuar al radar")}</ButtonArrow></div><form id="profile-form" onSubmit={submit} className="form-grid">{questions.map((question, index) => { const key = `answer-${index + 1}`; return <div className="question" key={key}><label><span>{text("Signal", "Señal")} 0{index + 1}</span>{question[language === "es" ? 1 : 0]}</label><textarea required name={key} rows={3} value={answers[key] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [key]: event.target.value }))} placeholder={text("Write it as you would explain it to a sharp colleague…", "Escríbelo como se lo explicarías a un colega perspicaz…")} /></div>; })}</form><div className="form-footer"><span>{text("8 signals · saved as a browser draft until submitted", "8 señales · guardadas como borrador en el navegador hasta enviarlas")}</span><button type="submit" form="profile-form" className="button button-primary" disabled={saving}>{saving ? text("Saving…", "Guardando…") : text("Save Business DNA", "Guardar ADN del negocio")}<span className="button-arrow">↗</span></button></div>{error && <p className="error" aria-live="polite">{error} {sessionExpired && <Link href="/login">{text("Sign in again — your draft is safe", "Vuelve a iniciar sesión — tu borrador está seguro")} ↗</Link>}</p>}{saved && <p className="notice" aria-live="polite">{text("Business DNA saved.", "ADN del negocio guardado.")} <Link href="/radar">{text("Create a scan", "Crear un escaneo")} ↗</Link></p>}</AppShell>;
+  return <AppShell><div className="page-toolbar"><SectionHeading eyebrow={text("Business DNA / profile", "ADN del negocio / perfil")} title={text("Tell us what makes you a fit.", "Cuéntanos qué te hace encajar.")} detail={text("Your answers become the real lens AnimaRadar uses for this company. They can be edited at any time.", "Tus respuestas se convierten en el criterio real que AnimaRadar usa para esta empresa. Puedes editarlas en cualquier momento.")} /><ButtonArrow href="/radar">{text("Continue to radar", "Continuar al radar")}</ButtonArrow></div>{!canEdit && <p className="notice" aria-live="polite">{text("Only the platform owner can edit Business DNA for this company. You can still review prospects and outcomes.", "Solo el propietario de la plataforma puede editar el ADN del negocio de esta empresa. Aun así puedes revisar prospectos y resultados.")}</p>}<form id="profile-form" onSubmit={submit} className="form-grid">{questions.map((question, index) => { const key = `answer-${index + 1}`; return <div className="question" key={key}><label><span>{text("Signal", "Señal")} 0{index + 1}</span>{question[language === "es" ? 1 : 0]}</label><textarea required name={key} rows={3} value={answers[key] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [key]: event.target.value }))} placeholder={text("Write it as you would explain it to a sharp colleague…", "Escríbelo como se lo explicarías a un colega perspicaz…")} readOnly={!canEdit} disabled={!canEdit} /></div>; })}</form><div className="form-footer"><span>{text("8 signals · saved as a browser draft until submitted", "8 señales · guardadas como borrador en el navegador hasta enviarlas")}</span><button type="submit" form="profile-form" className="button button-primary" disabled={saving || !canEdit}>{saving ? text("Saving…", "Guardando…") : text("Save Business DNA", "Guardar ADN del negocio")}<span className="button-arrow">↗</span></button></div>{error && <p className="error" aria-live="polite">{error} {sessionExpired && <Link href="/login">{text("Sign in again — your draft is safe", "Vuelve a iniciar sesión — tu borrador está seguro")} ↗</Link>}</p>}{saved && <p className="notice" aria-live="polite">{text("Business DNA saved.", "ADN del negocio guardado.")} <Link href="/radar">{text("Create a scan", "Crear un escaneo")} ↗</Link></p>}</AppShell>;
 }
 
 function draftKey(tenantId: string) {

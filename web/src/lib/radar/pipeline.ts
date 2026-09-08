@@ -351,10 +351,6 @@ async function discoverProspects(scan: ScanRecord, defaultMarketLang: string) {
     results.push(...await searchExa({ apiKey: exaKey, scan }));
   }
 
-  if (!results.length) {
-    throw new Error("No discovery provider is configured or no businesses were found. Add provider keys or use manual prospect entry.");
-  }
-
   return dedupeProspectSeeds(results);
 }
 

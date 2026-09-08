@@ -7,6 +7,13 @@ function slugify(value: string) {
   return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "");
 }
 
+export async function GET() {
+  const admin = createAdminClient();
+  const { count, error } = await admin.from("tenants").select("id", { count: "exact", head: true });
+  if (error) return NextResponse.json({ detail: error.message }, { status: 502 });
+  return NextResponse.json({ can_setup: (count ?? 0) === 0, login_domain: LOGIN_DOMAIN });
+}
+
 export async function POST(request: Request) {
   const payload = await request.json() as { full_name?: string; workspace_name?: string; password?: string };
   const fullName = String(payload.full_name ?? "").trim(); const workspaceName = String(payload.workspace_name ?? "").trim(); const password = String(payload.password ?? "");
@@ -22,7 +29,7 @@ export async function POST(request: Request) {
   if (userError || !created.user) return NextResponse.json({ detail: userError?.message ?? "Could not create owner account" }, { status: 502 });
   const { data: tenant, error: tenantError } = await admin.from("tenants").insert({ name: workspaceName, default_market_lang: "en-CA" }).select("id").single();
   if (tenantError || !tenant) { await admin.auth.admin.deleteUser(created.user.id); return NextResponse.json({ detail: tenantError?.message ?? "Could not create workspace" }, { status: 502 }); }
-  const { error: profileError } = await admin.from("users").insert({ id: created.user.id, tenant_id: tenant.id, email: login, full_name: fullName, role: "owner", must_change_password: false });
+  const { error: profileError } = await admin.from("users").insert({ id: created.user.id, tenant_id: tenant.id, email: login, full_name: fullName, role: "owner", platform_admin: true, must_change_password: false });
   if (profileError) { await admin.from("tenants").delete().eq("id", tenant.id); await admin.auth.admin.deleteUser(created.user.id); return NextResponse.json({ detail: profileError.message }, { status: 502 }); }
   return NextResponse.json({ login, full_name: fullName }, { status: 201 });
 }

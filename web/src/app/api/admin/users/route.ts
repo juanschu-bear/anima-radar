@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
+import { isPlatformAdmin } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireWorkspaceUser } from "@/lib/api-auth";
@@ -12,7 +13,7 @@ function generatePassword() { return `AR-${randomBytes(12).toString("base64url")
 export async function GET() {
   const auth = await requireWorkspaceUser();
   if (auth.error) return auth.error;
-  if (auth.profile.platform_admin !== true) return NextResponse.json({ detail: "Platform admin access required" }, { status: 403 });
+  if (!isPlatformAdmin(auth.profile)) return NextResponse.json({ detail: "Platform admin access required" }, { status: 403 });
   const admin = createAdminClient();
   const { data, error } = await admin.from("users").select("id,tenant_id,email,full_name,role,must_change_password").order("full_name", { ascending: true });
   if (error) return NextResponse.json({ detail: error.message }, { status: 502 });
@@ -23,8 +24,8 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ detail: "Authentication required" }, { status: 401 });
-  const { data: actor, error: actorError } = await supabase.from("users").select("tenant_id,role").eq("id", user.id).maybeSingle();
-  if (actorError || !actor || actor.role !== "owner") return NextResponse.json({ detail: "Only the workspace owner can create users" }, { status: 403 });
+  const { data: actor, error: actorError } = await supabase.from("users").select("tenant_id,role,platform_admin").eq("id", user.id).maybeSingle();
+  if (actorError || !actor || !isPlatformAdmin(actor)) return NextResponse.json({ detail: "Only a platform admin can create users" }, { status: 403 });
   const payload = await request.json() as { full_name?: string; tenant_id?: string };
   const fullName = String(payload.full_name ?? "").trim();
   if (fullName.length < 2) return NextResponse.json({ detail: "Full name is required" }, { status: 400 });

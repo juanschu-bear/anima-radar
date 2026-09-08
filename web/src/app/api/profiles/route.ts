@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isPlatformAdmin } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireWorkspaceUser } from "@/lib/api-auth";
 
@@ -8,12 +9,15 @@ export async function GET() {
   const admin = createAdminClient();
   const { data, error } = await admin.from("business_profiles").select("id,raw_answers,version,created_at").eq("tenant_id", auth.profile.tenant_id).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (error) return NextResponse.json({ detail: error.message }, { status: 502 });
-  return NextResponse.json({ profile: data ?? null, tenant_id: auth.profile.tenant_id });
+  return NextResponse.json({ profile: data ?? null, tenant_id: auth.profile.tenant_id, can_edit: isPlatformAdmin(auth.profile) });
 }
 
 export async function POST(request: Request) {
   const auth = await requireWorkspaceUser();
   if (auth.error) return auth.error;
+  if (!isPlatformAdmin(auth.profile)) {
+    return NextResponse.json({ detail: "Only a platform admin can update Business DNA" }, { status: 403 });
+  }
   const payload = await request.json() as { answers?: Record<string, string>; market_lang?: string; tenant_tone?: string };
   const answers = payload.answers ?? {};
   if (Object.values(answers).some((value) => typeof value !== "string")) return NextResponse.json({ detail: "Invalid profile answers" }, { status: 400 });

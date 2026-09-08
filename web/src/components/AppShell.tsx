@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { Route } from "next";
+import { isPlatformAdmin } from "@/lib/access";
 import { createClient } from "@/lib/supabase/client";
 import { LanguageToggle, useLanguage } from "@/components/LanguageProvider";
 
@@ -60,7 +61,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         setFullName(name); setFirstName(name.split(/\s+/)[0]);
         setInitials(name.split(/\s+/).slice(0, 2).map((part: string) => part[0]).join("").toUpperCase());
       }
-      const admin = profile.platform_admin === true;
+      const admin = isPlatformAdmin(profile);
       setIsAdmin(admin);
       setActiveCompanyId(profile.tenant_id);
       if (admin) {

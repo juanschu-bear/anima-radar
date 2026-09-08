@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import AppShell, { ButtonArrow, SectionHeading } from "@/components/AppShell";
 import { useLanguage } from "@/components/LanguageProvider";
@@ -10,6 +11,7 @@ type Prospect = { id: string; scan_id: string; source: string; name: string; cat
 function reasons(value: unknown) { if (!Array.isArray(value)) return []; return value.map((item) => typeof item === "string" ? item : item && typeof item === "object" && "reason" in item ? String(item.reason) : "").filter(Boolean); }
 
 export default function ProspectsPage() {
+  const router = useRouter();
   const { text } = useLanguage();
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -49,7 +51,9 @@ export default function ProspectsPage() {
     }
     setProspects((current) => current.map((item) => item.id === selected.id ? { ...item, status } : item));
     if (status === "approved") {
-      setNotice(text("Prospect approved. A first outreach draft is now waiting in Outreach.", "Prospecto aprobado. Ya hay un primer borrador esperándote en Contacto."));
+      router.push("/enviar?notice=draft-ready");
+      router.refresh();
+      return;
     }
   }
 

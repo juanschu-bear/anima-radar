@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { isPlatformAdmin } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireWorkspaceUser } from "@/lib/api-auth";
 
 export async function POST(request: Request) {
   const auth = await requireWorkspaceUser();
   if (auth.error) return auth.error;
-  if (auth.profile.platform_admin !== true) {
+  if (!isPlatformAdmin(auth.profile)) {
     return NextResponse.json({ detail: "Platform admin access required" }, { status: 403 });
   }
   const { tenant_id: tenantId, copy_profile_from: copyProfileFrom } = await request.json() as { tenant_id?: string; copy_profile_from?: string };
