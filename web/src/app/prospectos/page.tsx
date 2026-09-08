@@ -32,6 +32,10 @@ export default function ProspectsPage() {
         const incomingNotice = new URLSearchParams(window.location.search).get("notice");
         if (incomingNotice === "scan-complete") {
           setNotice(text("The scan finished and the matching businesses are now ready for review.", "El escaneo terminó y las empresas coincidentes ya están listas para revisión."));
+        } else if (incomingNotice === "manual-needed") {
+          setNotice(text("This company can already work manually. Add the first prospect below and continue the workflow immediately.", "Esta empresa ya puede trabajar de forma manual. Añade el primer prospecto abajo y continúa el flujo inmediatamente."));
+        } else if (incomingNotice === "no-matches") {
+          setNotice(text("The scan finished, but no strong matches were found yet. Add a company manually or broaden the market criteria.", "El escaneo terminó, pero todavía no encontró coincidencias fuertes. Añade una empresa manualmente o amplía los criterios del mercado."));
         }
       })
       .catch((cause) => { if (live) setError(cause instanceof Error ? cause.message : text("Could not load prospects", "No se pudieron cargar los prospectos")); })

@@ -37,7 +37,7 @@
 | Prompt contracts | [`prompts/`](prompts/) | Versioned ICP, extraction, scoring, and drafting prompts |
 | CLI | [`scripts/run_scan.py`](scripts/run_scan.py) | Starts a scan through the API contract |
 
-The deployed web application uses Supabase Auth and tenant-scoped Supabase records. The Python service remains the provider/worker boundary for discovery and enrichment; the product UI no longer substitutes sample companies, prospects, messages, or metrics.
+The deployed web application uses Supabase Auth, internal platform accounts, and tenant-scoped Supabase records. The Next.js app already runs the manual MVP workflow end to end: company setup, Business DNA, scans, manual prospect capture, approvals, outreach review, and learning outcomes. The Python service remains the provider/worker boundary for automated discovery and enrichment when live providers are configured.
 
 ## Feature map and live-readiness
 
@@ -47,10 +47,10 @@ Every operational surface reads the active company from the authenticated platfo
 |---|---|---|
 | Overview | See the company state and next setup action | Live Supabase counts and latest scan; explicit empty states |
 | Business DNA | Define offer, fit, proof, language and exclusions | Loads and saves the active tenant profile in Supabase |
-| Radar scans | Define market, radius and categories | Creates a tenant-scoped scan and database queue job |
-| Prospects | Review sourced evidence and approve/discard | Reads and updates tenant-scoped prospect records |
-| Outreach | Review prepared messages | Reads tenant-scoped message records; automatic sending remains off |
-| Learning Loop | Inspect replies, meetings, orders and losses | Reads tenant-scoped outcome history |
+| Radar scans | Define market, radius and categories | Creates a tenant-scoped scan; if no live provider is configured, the workflow falls back to manual prospect entry |
+| Prospects | Review sourced evidence and approve/discard | Reads and updates tenant-scoped prospect records; manual prospect creation is live |
+| Outreach | Review prepared messages | Reads tenant-scoped message records and supports manual send confirmation |
+| Learning Loop | Inspect replies, meetings, orders and losses | Reads tenant-scoped outcome history and records new outcomes |
 | Settings | Configure company name and language | Reads and updates the active tenant |
 | Administration | Create companies and users | Platform-admin-only Supabase operations and company switching |
 | Languages | Operate the complete web interface | English and Spanish with a persistent global switch |
@@ -118,7 +118,7 @@ cp .env.example radar-api/.env
 cp web/.env.example web/.env.local
 ```
 
-Fill in the real Supabase URL and keys. Never put `SUPABASE_SERVICE_ROLE_KEY` into the web app or commit either `.env` file.
+Fill in the real Supabase URL and keys. `SUPABASE_SERVICE_ROLE_KEY` is required by the server-side Next.js routes and must stay server-only. Never expose it to the browser or commit either `.env` file.
 
 ### 5. Create the first company
 
@@ -170,12 +170,12 @@ python scripts/run_scan.py \
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | web | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | web | Browser-safe Supabase key |
-| `RADAR_API_URL` | web | FastAPI base URL |
+| `RADAR_API_URL` | web | Optional FastAPI base URL for the automated provider/worker path |
 | `SUPABASE_URL` | API | Supabase project URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | API only | Server-side repository access; never expose to browser |
+| `SUPABASE_SERVICE_ROLE_KEY` | web server + API | Server-side Supabase admin access for provisioning, workspace routing, and API repository access; never expose to browser |
 | `ANTHROPIC_API_KEY` | API | ICP, extraction, scoring, drafting |
-| `GOOGLE_PLACES_API_KEY` | API | Google Places API (New) |
-| `EXA_API_KEY` | API | Non-map discovery |
+| `GOOGLE_PLACES_API_KEY` | web server and/or API | Google Places API (New) for live discovery |
+| `EXA_API_KEY` | web server and/or API | Non-map discovery for live scans |
 | `TWOGIS_API_KEY` | API | Russia/Kazakhstan discovery |
 | `JINA_API_KEY` | API | Optional Reader quota |
 | `RADAR_ENV` | API | `development` or `production` |
