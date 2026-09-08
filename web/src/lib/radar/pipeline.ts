@@ -648,15 +648,27 @@ async function searchExa({
 
 async function ensureManualScan(admin: AdminClient, tenantId: string, city?: string, country?: string) {
   const safeCountry = /^[A-Za-z]{2}$/.test(country ?? "") ? String(country).toUpperCase() : "US";
-  const { data: existing } = await admin
+  const primary = await admin
     .from("scans")
     .select("id")
     .eq("tenant_id", tenantId)
     .eq("status", "done")
     .contains("sources", ["manual"])
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  const fallback = primary.error && /created_at/i.test(primary.error.message)
+    ? await admin
+      .from("scans")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "done")
+      .contains("sources", ["manual"])
+      .order("started_at", { ascending: false })
+      .limit(1)
+    : null;
+
+  const existing = primary.data?.[0] ?? fallback?.data?.[0] ?? null;
 
   if (existing?.id) return existing.id;
 

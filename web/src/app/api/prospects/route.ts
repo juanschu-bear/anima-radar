@@ -55,10 +55,60 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const auth = await requireWorkspaceUser();
   if (auth.error) return auth.error;
-  const { id, status } = await request.json() as { id?: string; status?: string };
-  if (!id || !["new", "approved", "discarded"].includes(status ?? "")) return NextResponse.json({ detail: "Invalid prospect update" }, { status: 400 });
+  const { id, status, bulk_min_score: bulkMinScore } = await request.json() as { id?: string; status?: string; bulk_min_score?: number };
+  if (!["new", "approved", "discarded"].includes(status ?? "")) return NextResponse.json({ detail: "Invalid prospect update" }, { status: 400 });
   const admin = createAdminClient();
-  const { data: prospect, error: prospectError } = await admin.from("prospects").update({ status }).eq("id", id).eq("tenant_id", auth.profile.tenant_id).select("id,tenant_id,scan_id,source,source_id,name,category,address,city,country,website,phone,email,instagram,rating,review_count,raw,enrichment,score,score_reasons,best_channel,status").single();
+  const prospectSelect = "id,tenant_id,scan_id,source,source_id,name,category,address,city,country,website,phone,email,instagram,rating,review_count,raw,enrichment,score,score_reasons,best_channel,status";
+  const isBulk = typeof bulkMinScore === "number" && Number.isFinite(bulkMinScore);
+
+  if (isBulk) {
+    if (status !== "approved") return NextResponse.json({ detail: "Bulk update is available only for approvals" }, { status: 400 });
+    const { data: candidates, error: candidateError } = await admin
+      .from("prospects")
+      .select(prospectSelect)
+      .eq("tenant_id", auth.profile.tenant_id)
+      .eq("status", "new")
+      .gte("score", Math.round(bulkMinScore))
+      .order("score", { ascending: false, nullsFirst: false })
+      .limit(100);
+    if (candidateError) return NextResponse.json({ detail: candidateError.message }, { status: 502 });
+    const prospects = candidates ?? [];
+    if (!prospects.length) return NextResponse.json({ updated: 0, prospects: [], messages_created: 0 });
+
+    const { error: updateError } = await admin
+      .from("prospects")
+      .update({ status })
+      .in("id", prospects.map((prospect) => prospect.id))
+      .eq("tenant_id", auth.profile.tenant_id);
+    if (updateError) return NextResponse.json({ detail: updateError.message }, { status: 502 });
+
+    const [{ data: tenant }, { data: profile }] = await Promise.all([
+      admin.from("tenants").select("id,name,default_market_lang").eq("id", auth.profile.tenant_id).maybeSingle(),
+      admin.from("business_profiles").select("raw_answers").eq("tenant_id", auth.profile.tenant_id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+
+    let messagesCreated = 0;
+    if (tenant && profile) {
+      try {
+        for (const prospect of prospects) {
+          const messages = await createOrRefreshMessageDraft({
+            admin,
+            tenant,
+            profileAnswers: profile.raw_answers ?? {},
+            prospect,
+            authorName: auth.profile.full_name,
+          });
+          messagesCreated += messages.length;
+        }
+      } catch (cause) {
+        return NextResponse.json({ detail: cause instanceof Error ? cause.message : "Could not prepare the outreach drafts" }, { status: 502 });
+      }
+    }
+    return NextResponse.json({ updated: prospects.length, prospects: prospects.map((prospect) => ({ ...prospect, status })), messages_created: messagesCreated });
+  }
+
+  if (!id) return NextResponse.json({ detail: "Prospect is required" }, { status: 400 });
+  const { data: prospect, error: prospectError } = await admin.from("prospects").update({ status }).eq("id", id).eq("tenant_id", auth.profile.tenant_id).select(prospectSelect).single();
   if (prospectError) return NextResponse.json({ detail: prospectError.message }, { status: 502 });
 
   let messages = null;

@@ -30,8 +30,17 @@ export async function POST(request: Request) {
   const city = String(payload.city ?? "").trim();
   const country = String(payload.country ?? "").trim();
   const radius = Number(payload.radius_m ?? 15000);
+  const requestedSources = Array.isArray(payload.sources)
+    ? payload.sources
+      .filter((source): source is string => typeof source === "string")
+      .map((source) => source.trim())
+      .filter(Boolean)
+    : [];
+  const allowedSources = ["google_places", "exa", "manual"];
+  const sources = [...new Set(requestedSources.filter((source) => allowedSources.includes(source)))];
   if (!city || !country) return NextResponse.json({ detail: "City and country are required" }, { status: 400 });
   if (!Number.isFinite(radius) || radius < 1000 || radius > 100000) return NextResponse.json({ detail: "Radius must be between 1 and 100 km" }, { status: 400 });
+  if (!sources.length) return NextResponse.json({ detail: "Select at least one discovery source" }, { status: 400 });
   const admin = createAdminClient();
   const [{ data: profile }, { data: tenant }] = await Promise.all([
     admin.from("business_profiles").select("id,raw_answers").eq("tenant_id", auth.profile.tenant_id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
@@ -39,7 +48,7 @@ export async function POST(request: Request) {
   ]);
   if (!profile) return NextResponse.json({ detail: "Complete Business DNA before starting a scan" }, { status: 409 });
   if (!tenant) return NextResponse.json({ detail: "Active company not found" }, { status: 404 });
-  const { data: scan, error } = await admin.from("scans").insert({ tenant_id: auth.profile.tenant_id, profile_id: profile.id, city, country: country.toUpperCase(), radius_m: Math.round(radius), categories: payload.categories ?? [], sources: payload.sources ?? [], status: "queued" }).select("id,city,country,radius_m,categories,sources,status,counts,started_at,finished_at,error").single();
+  const { data: scan, error } = await admin.from("scans").insert({ tenant_id: auth.profile.tenant_id, profile_id: profile.id, city, country: country.toUpperCase(), radius_m: Math.round(radius), categories: payload.categories ?? [], sources, status: "queued" }).select("id,city,country,radius_m,categories,sources,status,counts,started_at,finished_at,error").single();
   if (error) return NextResponse.json({ detail: error.message }, { status: 502 });
   const { data: job, error: jobError } = await admin.from("jobs").insert({ tenant_id: auth.profile.tenant_id, type: "discover", payload: { scan_id: scan.id } }).select("id").single();
   if (jobError) return NextResponse.json({ detail: jobError.message }, { status: 502 });
@@ -55,7 +64,7 @@ export async function POST(request: Request) {
         country: scan.country,
         radius_m: scan.radius_m,
         categories: scan.categories,
-        sources: scan.sources,
+        sources,
       },
       jobId: job?.id,
     });
