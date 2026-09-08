@@ -72,29 +72,31 @@ export default function ProspectsPage() {
     event.preventDefault();
     setSavingManual(true);
     setError(null);
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const payload = {
+      name: form.get("name"),
+      category: form.get("category"),
+      city: form.get("city"),
+      country: form.get("country"),
+      website: form.get("website"),
+      phone: form.get("phone"),
+      email: form.get("email"),
+      instagram: form.get("instagram"),
+      note: form.get("note"),
+    };
     try {
       const response = await fetch("/api/prospects", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name: form.get("name"),
-          category: form.get("category"),
-          city: form.get("city"),
-          country: form.get("country"),
-          website: form.get("website"),
-          phone: form.get("phone"),
-          email: form.get("email"),
-          instagram: form.get("instagram"),
-          note: form.get("note"),
-        }),
+        body: JSON.stringify(payload),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail);
       setProspects((current) => [body.prospect, ...current]);
       setSelectedId(body.prospect.id);
       setNotice(text("Manual prospect added. You can review and approve it immediately.", "Prospecto manual añadido. Puedes revisarlo y aprobarlo inmediatamente."));
-      event.currentTarget.reset();
+      formElement.reset();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : text("Could not create prospect", "No se pudo crear el prospecto"));
     } finally {

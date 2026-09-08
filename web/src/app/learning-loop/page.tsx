@@ -35,23 +35,27 @@ export default function LearningLoopPage() {
     setSaving(true);
     setNotice(null);
     setError(null);
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const prospectId = String(form.get("prospect_id") ?? "");
+    const kind = String(form.get("kind") ?? "");
+    const note = form.get("note");
     try {
       const response = await fetch("/api/outcomes", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          prospect_id: form.get("prospect_id"),
-          kind: form.get("kind"),
-          note: form.get("note"),
+          prospect_id: prospectId,
+          kind,
+          note,
         }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail);
       setOutcomes((current) => [body.outcome, ...current]);
-      setProspects((current) => current.map((prospect) => prospect.id === form.get("prospect_id") ? { ...prospect, status: body.prospect_status } : prospect));
+      setProspects((current) => current.map((prospect) => prospect.id === prospectId ? { ...prospect, status: body.prospect_status } : prospect));
       setNotice(text("Outcome recorded. The radar can now learn from a real result.", "Resultado registrado. El radar ya puede aprender de un resultado real."));
-      event.currentTarget.reset();
+      formElement.reset();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : text("Could not save outcome", "No se pudo guardar el resultado"));
     } finally {

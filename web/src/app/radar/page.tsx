@@ -51,14 +51,19 @@ export default function RadarPage() {
     event.preventDefault();
     setStarting(true);
     setError(null);
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const city = String(form.get("city") ?? "");
+    const country = String(form.get("country") ?? "");
+    const radius = Number(form.get("radius"));
+    const categories = String(form.get("categories") ?? "").split(",").map((item) => item.trim()).filter(Boolean);
     try {
-      const response = await fetch("/api/scans", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ city: form.get("city"), country: form.get("country"), radius_m: Number(form.get("radius")) * 1000, categories: String(form.get("categories") ?? "").split(",").map((item) => item.trim()).filter(Boolean), sources: ["google_places", "exa"] }) });
+      const response = await fetch("/api/scans", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ city, country, radius_m: radius * 1000, categories, sources: ["google_places", "exa"] }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail);
       setScans((current) => [{ ...(body as Scan) }, ...current]);
       const discovered = Number(body.counts?.unique ?? 0);
-      event.currentTarget.reset();
+      formElement.reset();
       if (discovered > 0) {
         router.push("/prospectos?notice=scan-complete");
         router.refresh();
