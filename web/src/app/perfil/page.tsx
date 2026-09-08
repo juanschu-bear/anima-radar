@@ -23,7 +23,10 @@ export default function ProfilePage() {
   const { language, text } = useLanguage();
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState("");
   const [canEdit, setCanEdit] = useState(true);
+  const [hasServerProfile, setHasServerProfile] = useState(false);
+  const [hasLocalDraft, setHasLocalDraft] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -31,26 +34,39 @@ export default function ProfilePage() {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/profiles", { cache: "no-store" })
-      .then(async (response) => {
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(body.detail);
+    Promise.all([
+      fetch("/api/profiles", { cache: "no-store" }),
+      fetch("/api/workspace", { cache: "no-store" }),
+    ])
+      .then(async ([profileResponse, workspaceResponse]) => {
+        const body = await profileResponse.json().catch(() => ({}));
+        const workspaceBody = await workspaceResponse.json().catch(() => ({}));
+        if (!profileResponse.ok) throw new Error(body.detail);
+        if (!workspaceResponse.ok) throw new Error(workspaceBody.detail);
         if (!active) return;
         const currentTenantId = typeof body.tenant_id === "string" ? body.tenant_id : null;
         const serverAnswers = isAnswerRecord(body.profile?.raw_answers) ? body.profile.raw_answers : {};
+        const serverProfileExists = Boolean(body.profile);
         setCanEdit(body.can_edit !== false);
+        setCompanyName(workspaceBody.tenant?.name ?? "");
+        setHasServerProfile(serverProfileExists);
         let draftAnswers: Record<string, string> = {};
+        let draftFound = false;
         if (currentTenantId) {
           const storedDraft = window.localStorage.getItem(draftKey(currentTenantId));
           if (storedDraft) {
             try {
               const parsedDraft: unknown = JSON.parse(storedDraft);
-              if (isAnswerRecord(parsedDraft)) draftAnswers = parsedDraft;
+              if (isAnswerRecord(parsedDraft)) {
+                draftAnswers = parsedDraft;
+                draftFound = Object.keys(parsedDraft).length > 0;
+              }
             } catch {
               window.localStorage.removeItem(draftKey(currentTenantId));
             }
           }
         }
+        setHasLocalDraft(draftFound);
         setTenantId(currentTenantId);
         setAnswers({ ...serverAnswers, ...draftAnswers });
       })
@@ -63,6 +79,11 @@ export default function ProfilePage() {
   const querySetup = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("setup");
   const setupNotice = querySetup === "new-company"
     ? text("Company created. Next, define the Business DNA for this workspace so the radar can use real criteria.", "Empresa creada. Ahora define el ADN del negocio de este espacio para que el radar use criterios reales.")
+    : null;
+  const draftNotice = hasLocalDraft
+    ? hasServerProfile
+      ? text(`You are editing a browser draft for ${companyName || "this company"}. A previously saved company version also exists in Supabase until you save again.`, `Estás editando un borrador del navegador para ${companyName || "esta empresa"}. También existe una versión guardada en Supabase hasta que vuelvas a guardar.`)
+      : text(`The text below was restored from your browser draft for ${companyName || "this company"}. It is not stored in the company workspace until you press Save Business DNA.`, `El texto de abajo se recuperó de tu borrador del navegador para ${companyName || "esta empresa"}. No se guarda en el espacio de la empresa hasta que pulses Guardar ADN del negocio.`)
     : null;
 
   useEffect(() => {
@@ -105,7 +126,7 @@ export default function ProfilePage() {
       setSaving(false);
     }
   }
-  return <AppShell><div className="page-toolbar"><SectionHeading eyebrow={text("Business DNA / profile", "ADN del negocio / perfil")} title={text("Tell us what makes you a fit.", "Cuéntanos qué te hace encajar.")} detail={text("Your answers become the real lens AnimaRadar uses for this company. They can be edited at any time.", "Tus respuestas se convierten en el criterio real que AnimaRadar usa para esta empresa. Puedes editarlas en cualquier momento.")} /><ButtonArrow href="/radar">{text("Continue to radar", "Continuar al radar")}</ButtonArrow></div>{setupNotice && <p className="notice" aria-live="polite">{setupNotice}</p>}{!canEdit && <p className="notice" aria-live="polite">{text("Only the platform owner can edit Business DNA for this company. You can still review prospects and outcomes.", "Solo el propietario de la plataforma puede editar el ADN del negocio de esta empresa. Aun así puedes revisar prospectos y resultados.")}</p>}<form id="profile-form" onSubmit={submit} className="form-grid">{questions.map((question, index) => { const key = `answer-${index + 1}`; return <div className="question" key={key}><label><span>{text("Signal", "Señal")} 0{index + 1}</span>{question[language === "es" ? 1 : 0]}</label><textarea required name={key} rows={3} value={answers[key] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [key]: event.target.value }))} placeholder={text("Write it as you would explain it to a sharp colleague…", "Escríbelo como se lo explicarías a un colega perspicaz…")} readOnly={!canEdit} disabled={!canEdit} /></div>; })}</form><div className="form-footer"><span>{text("8 signals · saved as a browser draft until submitted", "8 señales · guardadas como borrador en el navegador hasta enviarlas")}</span><button type="submit" form="profile-form" className="button button-primary" disabled={saving || !canEdit}>{saving ? text("Saving…", "Guardando…") : text("Save Business DNA", "Guardar ADN del negocio")}<span className="button-arrow">↗</span></button></div>{error && <p className="error" aria-live="polite">{error} {sessionExpired && <Link href="/login">{text("Sign in again — your draft is safe", "Vuelve a iniciar sesión — tu borrador está seguro")} ↗</Link>}</p>}{saved && <p className="notice" aria-live="polite">{text("Business DNA saved.", "ADN del negocio guardado.")} <Link href="/radar">{text("Create a scan", "Crear un escaneo")} ↗</Link></p>}</AppShell>;
+  return <AppShell><div className="page-toolbar"><SectionHeading eyebrow={text("Business DNA / profile", "ADN del negocio / perfil")} title={text("Tell us what makes you a fit.", "Cuéntanos qué te hace encajar.")} detail={text("Your answers become the real lens AnimaRadar uses for this company. They can be edited at any time.", "Tus respuestas se convierten en el criterio real que AnimaRadar usa para esta empresa. Puedes editarlas en cualquier momento.")} /><ButtonArrow href="/radar">{text("Continue to radar", "Continuar al radar")}</ButtonArrow></div>{setupNotice && <p className="notice" aria-live="polite">{setupNotice}</p>}{draftNotice && <p className="notice" aria-live="polite">{draftNotice}</p>}{!canEdit && <p className="notice" aria-live="polite">{text("Only the platform owner can edit Business DNA for this company. You can still review prospects and outcomes.", "Solo el propietario de la plataforma puede editar el ADN del negocio de esta empresa. Aun así puedes revisar prospectos y resultados.")}</p>}<form id="profile-form" onSubmit={submit} className="form-grid">{questions.map((question, index) => { const key = `answer-${index + 1}`; return <div className="question" key={key}><label><span>{text("Signal", "Señal")} 0{index + 1}</span>{question[language === "es" ? 1 : 0]}</label><textarea required name={key} rows={3} value={answers[key] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [key]: event.target.value }))} placeholder={text("Write it as you would explain it to a sharp colleague…", "Escríbelo como se lo explicarías a un colega perspicaz…")} readOnly={!canEdit} disabled={!canEdit} /></div>; })}</form><div className="form-footer"><span>{text("8 signals · saved as a browser draft until submitted", "8 señales · guardadas como borrador en el navegador hasta enviarlas")}</span><button type="submit" form="profile-form" className="button button-primary" disabled={saving || !canEdit}>{saving ? text("Saving…", "Guardando…") : text("Save Business DNA", "Guardar ADN del negocio")}<span className="button-arrow">↗</span></button></div>{error && <p className="error" aria-live="polite">{error} {sessionExpired && <Link href="/login">{text("Sign in again — your draft is safe", "Vuelve a iniciar sesión — tu borrador está seguro")} ↗</Link>}</p>}{saved && <p className="notice" aria-live="polite">{text("Business DNA saved.", "ADN del negocio guardado.")} <Link href="/radar">{text("Create a scan", "Crear un escaneo")} ↗</Link></p>}</AppShell>;
 }
 
 function draftKey(tenantId: string) {

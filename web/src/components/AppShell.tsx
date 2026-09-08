@@ -48,6 +48,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     : companyNav.find((item) => item[1] === pathname) ? navLabels[companyNav.find((item) => item[1] === pathname)![0]]
     : pathname === "/learning-loop" ? text("Learning loop", "Ciclo de aprendizaje")
     : pathname === "/settings" ? text("Settings", "Configuración") : navLabels.overview;
+  const companyLabel = activeCompanyName || text("Loading company", "Cargando empresa");
 
   useEffect(() => {
     let live = true;
@@ -101,7 +102,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <nav className="primary-nav" aria-label={text("Active company workspace", "Espacio de la empresa activa")}>{companyNav.map(([key, href, icon]) => <Link key={key} href={href} className={pathname === href ? "active" : ""}><Icon name={icon as IconName}/><span>{navLabels[key]}</span></Link>)}</nav>
       <div className="sidebar-bottom"><Link href={"/learning-loop" as Route} className={pathname === "/learning-loop" ? "active" : ""}><Icon name="learn"/><span>{text("Learning loop", "Ciclo de aprendizaje")}</span></Link><Link href={"/settings" as Route} className={pathname === "/settings" ? "active" : ""}><Icon name="settings"/><span>{text("Settings", "Configuración")}</span></Link><div className="user-row"><span className="avatar">{initials}</span><div><strong>{fullName || text("Your account", "Tu cuenta")}</strong><small>{isAdmin ? text("Platform administrator", "Administrador de plataforma") : text("User", "Usuario")}</small></div></div></div>
     </aside>
-    <div className="main-column"><header className="topbar"><div className="mobile-brand"><SignalMark small/><span>AnimaRadar</span></div><div className="breadcrumbs"><span>{text("Hello", "Hola")}, {firstName}</span><b>/</b><strong>{currentLabel}</strong></div><div className="top-actions"><LanguageToggle compact/><Link href="/perfil" className="top-avatar" aria-label={text("Open profile", "Abrir perfil")}>{initials}</Link></div></header><main id="main-content" className="content-area">{children}</main></div>
+    <div className="main-column"><header className="topbar"><div className="mobile-brand"><SignalMark small/><span>AnimaRadar</span></div><div className="breadcrumbs"><span>{text("Hello", "Hola")}, {firstName}</span><b>/</b><span>{companyLabel}</span><b>/</b><strong>{currentLabel}</strong></div><div className="top-actions"><LanguageToggle compact/><Link href="/perfil" className="top-avatar" aria-label={text("Open profile", "Abrir perfil")}>{initials}</Link></div></header><div className="workspace-context"><div><span>{text("Active company", "Empresa activa")}</span><strong>{companyLabel}</strong></div><small>{isAdmin ? text("This is the company currently selected in the sidebar. Every page below uses only this workspace.", "Esta es la empresa seleccionada actualmente en la barra lateral. Todas las páginas de abajo usan solo este espacio.") : text("Everything below belongs only to this company workspace.", "Todo lo que aparece abajo pertenece solo a este espacio de empresa.")}</small></div><main id="main-content" className="content-area">{children}</main></div>
   </div>;
 }
 
