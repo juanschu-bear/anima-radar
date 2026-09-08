@@ -37,31 +37,30 @@
 | Prompt contracts | [`prompts/`](prompts/) | Versioned ICP, extraction, scoring, and drafting prompts |
 | CLI | [`scripts/run_scan.py`](scripts/run_scan.py) | Starts a scan through the API contract |
 
-The local API store is still a development fallback. The Supabase schema and REST repository are prepared so the next connection step can use the real project without restructuring the product.
+The deployed web application uses Supabase Auth and tenant-scoped Supabase records. The Python service remains the provider/worker boundary for discovery and enrichment; the product UI no longer substitutes sample companies, prospects, messages, or metrics.
 
 ## Feature map and live-readiness
 
-The interface exposes the full intended operator journey, but the current deployment is still a hybrid prototype. This distinction is deliberate: demo records are not presented as real company data.
+Every operational surface reads the active company from the authenticated platform user. A platform administrator can create companies, switch the active company, provision users and inspect each isolated workspace.
 
 | Surface | Intended job | Current state |
 |---|---|---|
-| Overview | See the market state and the next action | Visual shell with demo metrics and signal atlas |
-| Business DNA | Define offer, fit, proof, language and exclusions | Form posts to the API; persistence/auth still required |
-| Radar scans | Discover businesses by market, radius and category | API contract exists; provider keys and live tenant auth required |
-| Prospects | Review sourced evidence and approve/discard | Review interaction is present; records are still sample data |
-| Outreach | Open approved messages manually in the available channel | Human-send UI is present; real messages need Supabase-backed records |
-| Learning Loop | Capture replies, meetings, orders and losses | Dedicated page added; outcome persistence is the next backend slice |
-| Settings | Configure workspace, language, connections and readiness | Dedicated page added; tenant persistence/auth is still required |
+| Overview | See the company state and next setup action | Live Supabase counts and latest scan; explicit empty states |
+| Business DNA | Define offer, fit, proof, language and exclusions | Loads and saves the active tenant profile in Supabase |
+| Radar scans | Define market, radius and categories | Creates a tenant-scoped scan and database queue job |
+| Prospects | Review sourced evidence and approve/discard | Reads and updates tenant-scoped prospect records |
+| Outreach | Review prepared messages | Reads tenant-scoped message records; automatic sending remains off |
+| Learning Loop | Inspect replies, meetings, orders and losses | Reads tenant-scoped outcome history |
+| Settings | Configure company name and language | Reads and updates the active tenant |
+| Administration | Create companies and users | Platform-admin-only Supabase operations and company switching |
+| Languages | Operate the complete web interface | English and Spanish with a persistent global switch |
 
-### What must be connected before using a real company
+### What remains before automated discovery is live
 
-1. Supabase Auth magic-link login and the first tenant bootstrap.
-2. JWT tenant resolution in the FastAPI API, so every request is scoped to the signed-in workspace.
-3. A deployed `radar-api` URL in Vercel; the current web proxy falls back to `http://localhost:8000` only for development.
-4. Real provider credentials for Google Places and Exa, plus the configured LLM key for extraction, scoring and drafting.
-5. A Supabase-backed repository for profiles, scans, prospects, messages, outcomes and jobs. The schema and RLS policies exist; the API currently still uses `DevelopmentStore` by default.
-6. Worker execution for the database queue, retries, evidence collection and message drafting.
-7. A consent/approval policy and channel configuration for the company’s market. Automated sending remains intentionally out of scope for v1.
+1. Configure production credentials for the selected discovery providers (for example Google Places and Exa) and the extraction/scoring model.
+2. Run the Python worker continuously so it can claim the `jobs` created by the web application, retry failures, collect evidence and draft messages.
+3. Complete one small end-to-end provider test per market and verify evidence quality before increasing scan volume.
+4. Configure the company’s consent, review and channel rules. Automated sending remains intentionally out of scope for v1.
 
 The first live acceptance test should be: sign in → create the tenant → answer Business DNA → start one small scan → inspect sourced evidence → approve one message → manually send it → record the outcome in Learning Loop.
 
@@ -121,21 +120,9 @@ cp web/.env.example web/.env.local
 
 Fill in the real Supabase URL and keys. Never put `SUPABASE_SERVICE_ROLE_KEY` into the web app or commit either `.env` file.
 
-### 5. Create the first tenant
+### 5. Create the first company
 
-After the owner signs in through the magic link, call the SQL function while authenticated:
-
-```sql
-select public.bootstrap_tenant('Andes Bloom', 'en-CA');
-```
-
-For Florum:
-
-```sql
-select public.bootstrap_tenant('Florum', 'ru');
-```
-
-The function reads the authenticated user from Supabase Auth, creates the tenant, and links the user as `owner`. The API must derive tenant identity from the verified user token and `public.users`; it must never trust a `tenant_id` sent in the request body.
+Open the deployed `/login` page. The one-time initial-admin form creates the first platform administrator and company. After that, the administrator creates and opens additional company workspaces under **Administration → Companies**. No mailbox or magic link is required.
 
 ## Run locally
 
@@ -212,7 +199,7 @@ FastAPI radar-api
   └─ Supabase REST repository
 
 Supabase
-  ├─ Auth / magic links
+  ├─ Auth / internal login IDs and passwords
   ├─ Postgres / RLS per tenant
   └─ jobs table as v1 queue
 ```
@@ -248,13 +235,6 @@ Business performance is tracked separately from reply volume: `sent → reply �
 | Default | Manual WhatsApp, email | Human approval required |
 
 Automated sending is explicitly out of scope for v1.
-
-## First tenants
-
-| Tenant | Market | First scenario |
-|---|---|---|
-| Andes Bloom | Vancouver, `en-CA` | Florists, wedding planners, event companies |
-| Florum | Moscow, Almaty, Minsk, `ru` | Florists and seasonal supply |
 
 ## Verification commands
 

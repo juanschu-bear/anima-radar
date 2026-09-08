@@ -1,11 +1,29 @@
 import { NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { requireWorkspaceUser } from "@/lib/api-auth";
 
-type ProfilePayload = { answers: Record<string, string>; market_lang: string; tenant_tone: string };
+export async function GET() {
+  const auth = await requireWorkspaceUser();
+  if (auth.error) return auth.error;
+  const admin = createAdminClient();
+  const { data, error } = await admin.from("business_profiles").select("id,raw_answers,version,created_at").eq("tenant_id", auth.profile.tenant_id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (error) return NextResponse.json({ detail: error.message }, { status: 502 });
+  return NextResponse.json({ profile: data ?? null });
+}
 
 export async function POST(request: Request) {
-  const base = process.env.RADAR_API_URL ?? "http://localhost:8000";
-  const payload = (await request.json()) as ProfilePayload;
-  const response = await fetch(`${base}/profiles`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload), cache: "no-store" });
-  const body: unknown = await response.json();
-  return NextResponse.json(body, { status: response.status });
+  const auth = await requireWorkspaceUser();
+  if (auth.error) return auth.error;
+  const payload = await request.json() as { answers?: Record<string, string>; market_lang?: string; tenant_tone?: string };
+  const answers = payload.answers ?? {};
+  if (Object.values(answers).some((value) => typeof value !== "string")) return NextResponse.json({ detail: "Invalid profile answers" }, { status: 400 });
+  const admin = createAdminClient();
+  const { data: existing } = await admin.from("business_profiles").select("id,version").eq("tenant_id", auth.profile.tenant_id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const raw = { ...answers, market_lang: payload.market_lang ?? "en", tenant_tone: payload.tenant_tone ?? "concrete and respectful" };
+  const query = existing
+    ? admin.from("business_profiles").update({ raw_answers: raw, version: existing.version + 1 }).eq("id", existing.id)
+    : admin.from("business_profiles").insert({ tenant_id: auth.profile.tenant_id, raw_answers: raw });
+  const { data, error } = await query.select("id,version,created_at").single();
+  if (error) return NextResponse.json({ detail: error.message }, { status: 502 });
+  return NextResponse.json(data, { status: existing ? 200 : 201 });
 }

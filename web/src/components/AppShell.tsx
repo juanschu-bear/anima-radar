@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { Route } from "next";
 import { createClient } from "@/lib/supabase/client";
+import { LanguageToggle, useLanguage } from "@/components/LanguageProvider";
 
 type IconName = "overview" | "profile" | "radar" | "prospects" | "send" | "learn" | "settings";
-const companyNav = [["overview", "Overview", "/panel", "overview"], ["profile", "Business DNA", "/perfil", "profile"], ["radar", "Radar scans", "/radar", "radar"], ["prospects", "Prospects", "/prospectos", "prospects"], ["send", "Outreach", "/enviar", "send"]] as const;
+const companyNav = [["overview", "/panel", "overview"], ["profile", "/perfil", "profile"], ["radar", "/radar", "radar"], ["prospects", "/prospectos", "prospects"], ["send", "/enviar", "send"]] as const;
 
 function Icon({ name }: { name: IconName }) {
   const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -27,20 +29,78 @@ export function SignalMark({ small = false }: { small?: boolean }) { return <spa
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [fullName, setFullName] = useState(""); const [firstName, setFirstName] = useState("there"); const [initials, setInitials] = useState("JS"); const [isAdmin, setIsAdmin] = useState(false);
-  const currentLabel = pathname === "/admin/companies" ? "Companies" : pathname === "/admin/users" ? "Users" : companyNav.find((item) => item[2] === pathname)?.[1] ?? (pathname === "/learning-loop" ? "Learning loop" : pathname === "/settings" ? "Settings" : "Overview");
-  useEffect(() => { const supabase = createClient(); supabase.auth.getUser().then(async ({ data }) => { const name = typeof data.user?.user_metadata?.full_name === "string" ? data.user.user_metadata.full_name.trim() : ""; if (name) { setFullName(name); setFirstName(name.split(/\s+/)[0]); setInitials(name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()); } if (data.user) { const { data: profile } = await supabase.from("users").select("role,platform_admin").eq("id", data.user.id).maybeSingle(); setIsAdmin(profile?.platform_admin === true || profile?.role === "owner"); } }); }, []);
+  const router = useRouter();
+  const { text } = useLanguage();
+  const [fullName, setFullName] = useState("");
+  const [firstName, setFirstName] = useState(text("there", "allí"));
+  const [initials, setInitials] = useState("AR");
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([]);
+  const [activeCompanyId, setActiveCompanyId] = useState("");
+  const [activeCompanyName, setActiveCompanyName] = useState("");
+  const navLabels: Record<string, string> = {
+    overview: text("Overview", "Resumen"), profile: "Business DNA", radar: text("Radar scans", "Escaneos de radar"),
+    prospects: text("Prospects", "Prospectos"), send: text("Outreach", "Contacto"),
+  };
+  const currentLabel = pathname === "/admin/companies" ? text("Companies", "Empresas")
+    : pathname === "/admin/users" ? text("Users", "Usuarios")
+    : companyNav.find((item) => item[1] === pathname) ? navLabels[companyNav.find((item) => item[1] === pathname)![0]]
+    : pathname === "/learning-loop" ? text("Learning loop", "Ciclo de aprendizaje")
+    : pathname === "/settings" ? text("Settings", "Configuración") : navLabels.overview;
+
+  useEffect(() => {
+    let live = true;
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!live || !data.user) return;
+      const { data: profile } = await supabase.from("users").select("tenant_id,role,platform_admin,full_name").eq("id", data.user.id).maybeSingle();
+      if (!live || !profile) return;
+      const name = (profile.full_name || data.user.user_metadata?.full_name || "").trim();
+      if (name) {
+        setFullName(name); setFirstName(name.split(/\s+/)[0]);
+        setInitials(name.split(/\s+/).slice(0, 2).map((part: string) => part[0]).join("").toUpperCase());
+      }
+      const admin = profile.platform_admin === true;
+      setIsAdmin(admin);
+      setActiveCompanyId(profile.tenant_id);
+      if (admin) {
+        const response = await fetch("/api/admin/tenants", { cache: "no-store" });
+        const body = await response.json() as { tenants?: Array<{ id: string; name: string }>; active_tenant_id?: string };
+        if (!live) return;
+        const list = body.tenants ?? [];
+        const selectedId = body.active_tenant_id ?? profile.tenant_id;
+        setCompanies(list); setActiveCompanyId(selectedId);
+        setActiveCompanyName(list.find((company) => company.id === selectedId)?.name ?? "");
+      } else {
+        const { data: tenant } = await supabase.from("tenants").select("id,name").eq("id", profile.tenant_id).maybeSingle();
+        if (live && tenant) { setCompanies([tenant]); setActiveCompanyName(tenant.name); }
+      }
+    });
+    return () => { live = false; };
+  }, []);
+
+  async function switchCompany(tenantId: string) {
+    if (!tenantId || tenantId === activeCompanyId) return;
+    const previous = activeCompanyId;
+    setActiveCompanyId(tenantId);
+    setActiveCompanyName(companies.find((company) => company.id === tenantId)?.name ?? "");
+    const response = await fetch("/api/admin/active-tenant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tenant_id: tenantId }) });
+    if (!response.ok) { setActiveCompanyId(previous); return; }
+    router.push(`/panel?tenant=${tenantId}`);
+    router.refresh();
+  }
+
   return <div className="app-shell">
-    <a className="skip-link" href="#main-content">Skip to content</a>
+    <a className="skip-link" href="#main-content">{text("Skip to content", "Saltar al contenido")}</a>
     <aside className="sidebar">
       <Link href="/panel" className="brand"><SignalMark/><span>Anima<span>Radar</span></span></Link>
-      {isAdmin && <><p className="nav-label admin-nav-label">Administration</p><nav className="primary-nav" aria-label="Administration"><Link href={"/admin/companies" as Route} className={pathname === "/admin/companies" ? "active" : ""}><Icon name="overview"/><span>Companies</span></Link><Link href={"/admin/users" as Route} className={pathname === "/admin/users" ? "active" : ""}><Icon name="profile"/><span>Users</span></Link></nav></>}
-      <Link href="/settings" className="workspace-switcher"><span className="workspace-dot"/><div><small>Selected company</small><strong>Andes Bloom</strong></div><span className="chevron">⌄</span></Link>
-      <p className="nav-label">Company workspace</p>
-      <nav className="primary-nav" aria-label="Company workspace">{companyNav.map(([key, label, href, icon]) => <Link key={key} href={href} className={pathname === href ? "active" : ""}><Icon name={icon as IconName}/><span>{label}</span>{key === "prospects" && <b>12</b>}</Link>)}</nav>
-      <div className="sidebar-bottom"><Link href={"/learning-loop" as Route} className={pathname === "/learning-loop" ? "active" : ""}><Icon name="learn"/><span>Learning loop</span></Link><Link href={"/settings" as Route} className={pathname === "/settings" ? "active" : ""}><Icon name="settings"/><span>Settings</span></Link><div className="usage"><div className="usage-head"><span>Scan capacity</span><strong>72%</strong></div><div className="usage-bar"><i/></div><small>Resets in 12 days</small></div><div className="user-row"><span className="avatar">{initials}</span><div><strong>{fullName || "Your account"}</strong><small>{isAdmin ? "Platform administrator" : "User"}</small></div><span className="more">•••</span></div></div>
+      <div className="workspace-switcher workspace-switcher--stable"><span className="workspace-dot"/><div><small>{text("Active company", "Empresa activa")}</small>{isAdmin ? <select aria-label={text("Switch active company", "Cambiar empresa activa")} value={activeCompanyId} onChange={(event) => switchCompany(event.target.value)} disabled={!companies.length}>{!companies.length && <option value="">{text("Loading…", "Cargando…")}</option>}{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select> : <strong>{activeCompanyName || text("Loading…", "Cargando…")}</strong>}</div></div>
+      <div className="admin-nav-slot" aria-busy={isAdmin === null}>{isAdmin === true && <><p className="nav-label">{text("Platform administration", "Administración de plataforma")}</p><nav className="primary-nav" aria-label={text("Platform administration", "Administración de plataforma")}><Link href={"/admin/companies" as Route} className={pathname === "/admin/companies" ? "active" : ""}><Icon name="overview"/><span>{text("Companies", "Empresas")}</span></Link><Link href={"/admin/users" as Route} className={pathname === "/admin/users" ? "active" : ""}><Icon name="profile"/><span>{text("Users", "Usuarios")}</span></Link></nav></>}</div>
+      <p className="nav-label">{text("Company workspace", "Espacio de la empresa")}</p>
+      <nav className="primary-nav" aria-label={text("Company workspace", "Espacio de la empresa")}>{companyNav.map(([key, href, icon]) => <Link key={key} href={href} className={pathname === href ? "active" : ""}><Icon name={icon as IconName}/><span>{navLabels[key]}</span></Link>)}</nav>
+      <div className="sidebar-bottom"><Link href={"/learning-loop" as Route} className={pathname === "/learning-loop" ? "active" : ""}><Icon name="learn"/><span>{text("Learning loop", "Ciclo de aprendizaje")}</span></Link><Link href={"/settings" as Route} className={pathname === "/settings" ? "active" : ""}><Icon name="settings"/><span>{text("Settings", "Configuración")}</span></Link><div className="user-row"><span className="avatar">{initials}</span><div><strong>{fullName || text("Your account", "Tu cuenta")}</strong><small>{isAdmin ? text("Platform administrator", "Administrador de plataforma") : text("User", "Usuario")}</small></div></div></div>
     </aside>
-    <div className="main-column"><header className="topbar"><div className="mobile-brand"><SignalMark small/><span>AnimaRadar</span></div><div className="breadcrumbs"><span>Good to see you, {firstName}</span><b>/</b><strong>{currentLabel}</strong></div><div className="top-actions"><button className="icon-button" aria-label="Open notifications"><span className="notification-dot"/><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></button><Link href="/perfil" className="top-avatar">{initials}</Link></div></header><main id="main-content" className="content-area">{children}</main></div>
+    <div className="main-column"><header className="topbar"><div className="mobile-brand"><SignalMark small/><span>AnimaRadar</span></div><div className="breadcrumbs"><span>{text("Good to see you", "Qué gusto verte")}, {firstName}</span><b>/</b><strong>{currentLabel}</strong></div><div className="top-actions"><LanguageToggle compact/><Link href="/perfil" className="top-avatar" aria-label={text("Open profile", "Abrir perfil")}>{initials}</Link></div></header><main id="main-content" className="content-area">{children}</main></div>
   </div>;
 }
 

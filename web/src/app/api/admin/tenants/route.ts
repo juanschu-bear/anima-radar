@@ -6,9 +6,9 @@ async function requirePlatformAdmin() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: NextResponse.json({ detail: "Authentication required" }, { status: 401 }) };
-  const { data: actor, error } = await supabase.from("users").select("platform_admin,role").eq("id", user.id).maybeSingle();
+  const { data: actor, error } = await supabase.from("users").select("tenant_id,platform_admin,role").eq("id", user.id).maybeSingle();
   if (error || !actor || (actor.platform_admin !== true && actor.role !== "owner")) return { error: NextResponse.json({ detail: "Platform admin access required" }, { status: 403 }) };
-  return { admin: createAdminClient() };
+  return { admin: createAdminClient(), actor };
 }
 
 export async function GET() {
@@ -16,7 +16,7 @@ export async function GET() {
   if (auth.error) return auth.error;
   const { data, error } = await auth.admin.from("tenants").select("id,name,default_market_lang,created_at").order("created_at", { ascending: true });
   if (error) return NextResponse.json({ detail: error.message }, { status: 502 });
-  return NextResponse.json({ tenants: data ?? [] });
+  return NextResponse.json({ tenants: data ?? [], active_tenant_id: auth.actor.tenant_id });
 }
 
 export async function POST(request: Request) {

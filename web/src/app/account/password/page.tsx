@@ -1,36 +1,17 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import AppShell, { SectionHeading } from "@/components/AppShell";
+import { useLanguage } from "@/components/LanguageProvider";
 import { createClient } from "@/lib/supabase/client";
 
+function PasswordContent() {
+  const router = useRouter(); const params = useSearchParams(); const { text } = useLanguage(); const required = params.get("required") === "1"; const [visible, setVisible] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [saved, setSaved] = useState(false);
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); setError(null); const form = new FormData(event.currentTarget); const password = String(form.get("password") ?? ""); const confirmation = String(form.get("confirmation") ?? ""); if (password.length < 10) { setError(text("Use at least 10 characters.", "Usa al menos 10 caracteres.")); setBusy(false); return; } if (password !== confirmation) { setError(text("The passwords do not match.", "Las contraseñas no coinciden.")); setBusy(false); return; } try { const supabase = createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) throw new Error(text("Your session has expired.", "Tu sesión ha caducado.")); const { error: authError } = await supabase.auth.updateUser({ password }); if (authError) throw authError; const { error: profileError } = await supabase.from("users").update({ must_change_password: false }).eq("id", user.id); if (profileError) throw profileError; setSaved(true); window.setTimeout(() => router.push("/panel"), 700); } catch (cause) { setError(cause instanceof Error ? cause.message : text("Could not update password", "No se pudo actualizar la contraseña")); } finally { setBusy(false); } }
+  return <AppShell><div className="account-page"><SectionHeading eyebrow={text("Account / security", "Cuenta / seguridad")} title={required ? text("Make this password yours.", "Haz tuya esta contraseña.") : text("Update your password.", "Actualiza tu contraseña.")} detail={text("Choose a private password for your AnimaRadar login.", "Elige una contraseña privada para tu acceso a AnimaRadar.")} /><section className="panel password-card"><div className="password-card-copy"><p className="eyebrow">{text("Private access", "Acceso privado")}</p><h2>{text("Your password stays unreadable.", "Tu contraseña permanece ilegible.")}</h2><p>{text("Supabase stores only a secure password hash. AnimaRadar cannot display your current password.", "Supabase guarda únicamente un hash seguro. AnimaRadar no puede mostrar tu contraseña actual.")}</p></div><form className="password-form" onSubmit={submit}><label>{text("New password", "Nueva contraseña")}<div className="password-field"><input required name="password" minLength={10} autoComplete="new-password" type={visible ? "text" : "password"} /><button type="button" className="password-toggle" onClick={() => setVisible((current) => !current)} aria-label={visible ? text("Hide passwords", "Ocultar contraseñas") : text("Show passwords", "Mostrar contraseñas")}>{visible ? "👁️" : "🙈"}</button></div></label><label>{text("Confirm password", "Confirmar contraseña")}<input required name="confirmation" minLength={10} autoComplete="new-password" type={visible ? "text" : "password"} /></label><button className="button button-primary" disabled={busy}>{busy ? text("Saving…", "Guardando…") : text("Save password", "Guardar contraseña")}</button>{saved && <p className="notice" aria-live="polite">{text("Password saved.", "Contraseña guardada.")}</p>}{error && <p className="error" aria-live="polite">{error}</p>}</form></section></div></AppShell>;
+}
+
 export default function PasswordPage() {
-  const router = useRouter();
-  const required = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("required") === "1";
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError(null); setSaved(false);
-    const form = new FormData(event.currentTarget);
-    const password = String(form.get("password") ?? "");
-    const confirmation = String(form.get("confirmation") ?? "");
-    if (password.length < 10) { setError("Use at least 10 characters for your new password."); setBusy(false); return; }
-    if (password !== confirmation) { setError("The passwords do not match."); setBusy(false); return; }
-    try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Your session has expired. Please sign in again.");
-      const { error: authError } = await supabase.auth.updateUser({ password });
-      if (authError) throw authError;
-      const { error: profileError } = await supabase.from("users").update({ must_change_password: false }).eq("id", user.id);
-      if (profileError) throw profileError;
-      setSaved(true); window.setTimeout(() => router.push("/panel"), 700);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not update your password"); }
-    finally { setBusy(false); }
-  }
-
-  return <AppShell><div className="account-page"><SectionHeading eyebrow="Account / security" title={required ? "Make this password yours." : "Update your password."} detail={required ? "Your workspace owner gave you a one-time password. Choose a private password before entering the workspace." : "Keep your AnimaRadar access private and up to date."} /><section className="panel password-card"><div className="password-card-copy"><p className="eyebrow">Private access</p><h2>{required ? "One last step before your radar opens." : "Change your password whenever you need."}</h2><p>{required ? "The temporary password is no longer needed after this change. Your new password is never shown or stored by AnimaRadar in readable form." : "Use a password that is unique to this workspace. The change takes effect immediately."}</p></div><form className="password-form" onSubmit={submit}><label>New password<input required name="password" minLength={10} autoComplete="new-password" type="password" placeholder="At least 10 characters" /></label><label>Confirm new password<input required name="confirmation" minLength={10} autoComplete="new-password" type="password" placeholder="Repeat your new password" /></label><button className="button button-primary" disabled={busy}>{busy ? "Saving…" : "Save password"}<span className="button-arrow" aria-hidden="true" /></button>{saved&&<p className="notice" aria-live="polite">Password saved. Opening your workspace…</p>}{error&&<p className="error" aria-live="polite">{error}</p>}</form></section></div></AppShell>;
+  return <Suspense fallback={null}><PasswordContent/></Suspense>;
 }

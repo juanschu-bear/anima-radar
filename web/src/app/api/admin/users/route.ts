@@ -2,11 +2,22 @@ import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireWorkspaceUser } from "@/lib/api-auth";
 
 const LOGIN_DOMAIN = process.env.LOGIN_DOMAIN ?? "animaradar.com";
 
 function slugify(value: string) { return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, ""); }
 function generatePassword() { return `AR-${randomBytes(12).toString("base64url")}-a7`; }
+
+export async function GET() {
+  const auth = await requireWorkspaceUser();
+  if (auth.error) return auth.error;
+  if (auth.profile.platform_admin !== true) return NextResponse.json({ detail: "Platform admin access required" }, { status: 403 });
+  const admin = createAdminClient();
+  const { data, error } = await admin.from("users").select("id,tenant_id,email,full_name,role,must_change_password").order("full_name", { ascending: true });
+  if (error) return NextResponse.json({ detail: error.message }, { status: 502 });
+  return NextResponse.json({ users: data ?? [] });
+}
 
 export async function POST(request: Request) {
   const supabase = await createClient();
