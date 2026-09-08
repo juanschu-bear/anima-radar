@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireWorkspaceUser } from "@/lib/api-auth";
 import { businessEventKindFromOutcome, prospectStatusFromOutcome } from "@/lib/radar/pipeline";
+import { computeRubricAdjustments } from "@/lib/rubric-adjustments";
 
 export async function GET() {
   const auth = await requireWorkspaceUser();
@@ -48,6 +49,20 @@ export async function POST(request: Request) {
     kind: businessEventKindFromOutcome(payload.kind),
     note: typeof payload.note === "string" ? payload.note.trim() : null,
   });
+
+  const [{ data: profile }, { data: learningRows, error: learningError }] = await Promise.all([
+    admin.from("business_profiles").select("id,icp").eq("tenant_id", auth.profile.tenant_id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    admin.from("outcomes").select("kind,prospects(category,score_reasons)").eq("tenant_id", auth.profile.tenant_id),
+  ]);
+
+  if (learningError) return NextResponse.json({ detail: learningError.message }, { status: 502 });
+
+  if (profile?.id) {
+    const adjustments = computeRubricAdjustments((learningRows ?? []) as Array<{ kind: "replied_positive" | "replied_negative" | "no_reply" | "meeting" | "order" | "lost"; prospects: { category?: string | null; score_reasons?: unknown } | null }>);
+    const nextIcp = profile.icp && typeof profile.icp === "object" && !Array.isArray(profile.icp) ? { ...profile.icp, rubric_adjustments: adjustments } : { rubric_adjustments: adjustments };
+    const { error: profileUpdateError } = await admin.from("business_profiles").update({ icp: nextIcp }).eq("id", profile.id);
+    if (profileUpdateError) return NextResponse.json({ detail: profileUpdateError.message }, { status: 502 });
+  }
 
   return NextResponse.json({ outcome, prospect_status: nextStatus }, { status: 201 });
 }

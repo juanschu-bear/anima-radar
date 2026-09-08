@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   if (!sources.length) return NextResponse.json({ detail: "Select at least one discovery source" }, { status: 400 });
   const admin = createAdminClient();
   const [{ data: profile }, { data: tenant }] = await Promise.all([
-    admin.from("business_profiles").select("id,raw_answers").eq("tenant_id", auth.profile.tenant_id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    admin.from("business_profiles").select("id,raw_answers,icp").eq("tenant_id", auth.profile.tenant_id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     admin.from("tenants").select("id,name,default_market_lang").eq("id", auth.profile.tenant_id).maybeSingle(),
   ]);
   if (!profile) return NextResponse.json({ detail: "Complete Business DNA before starting a scan" }, { status: 409 });

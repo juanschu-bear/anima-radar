@@ -26,6 +26,11 @@ type Dashboard = {
     active_categories: Array<{ label: string; count: number }>;
     draft_control: { sent_total: number; edited_total: number; edited_share: number };
   };
+  rubric_adjustments: {
+    updated_at: string;
+    categories: Array<{ label: string; shift: number; wins: number; losses: number }>;
+    reasons: Array<{ label: string; shift: number; wins: number; losses: number }>;
+  } | null;
   workspace_readiness: { state: string; complete: boolean; next_route: string };
   latest_scan: { id: string; city: string; country: string; radius_m: number; status: string; counts: Record<string, number>; created_at: string } | null;
 };
@@ -244,6 +249,20 @@ export default function PanelPage() {
               <h3>{text("Reasons still stalling", "Razones que aún se frenan")}</h3>
               <InsightList items={dashboard?.insights.stalled_reasons ?? []} emptyLabel={text("Nothing is stalled yet.", "Todavía no hay razones estancadas.")} />
             </div>
+
+            <div className="analytics-card">
+              <p className="eyebrow">{text("Learning adjustments", "Ajustes de aprendizaje")}</p>
+              <h3>{text("Categories weighted up or down", "Categorías que suben o bajan de peso")}</h3>
+              <AdjustmentList
+                items={dashboard?.rubric_adjustments?.categories ?? []}
+                emptyLabel={text("No category adjustments yet.", "Todavía no hay ajustes por categoría.")}
+              />
+              <h3>{text("Reasons moving the rubric", "Razones que están moviendo la rúbrica")}</h3>
+              <AdjustmentList
+                items={dashboard?.rubric_adjustments?.reasons ?? []}
+                emptyLabel={text("No reason adjustments yet.", "Todavía no hay ajustes por razón.")}
+              />
+            </div>
           </div>
         </section>
       </div>
@@ -278,6 +297,34 @@ function InsightList({
         <div key={item.label} className="insight-row">
           <span>{item.label}</span>
           <strong>{item.count}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AdjustmentList({
+  items,
+  emptyLabel,
+}: {
+  items: Array<{ label: string; shift: number; wins: number; losses: number }>;
+  emptyLabel: string;
+}) {
+  if (!items.length) {
+    return <p className="analytics-empty">{emptyLabel}</p>;
+  }
+
+  return (
+    <div className="insight-list">
+      {items.map((item) => (
+        <div className="insight-row" key={item.label}>
+          <div>
+            <strong>{item.label}</strong>
+            <small>{item.wins}↑ / {item.losses}↓</small>
+          </div>
+          <span className={`feature-status ${item.shift > 0 ? "feature-status--ready" : "feature-status--partial"}`}>
+            {item.shift > 0 ? `+${item.shift}` : item.shift}
+          </span>
         </div>
       ))}
     </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell, { ButtonArrow, SectionHeading } from "@/components/AppShell";
 import { useLanguage } from "@/components/LanguageProvider";
@@ -49,8 +48,16 @@ function reasons(value: unknown) {
     .filter(Boolean);
 }
 
+function pickNextReviewProspect(prospects: Prospect[], currentId: string) {
+  const currentIndex = prospects.findIndex((item) => item.id === currentId);
+  const forward = prospects.slice(currentIndex + 1).find((item) => item.status === "new");
+  if (forward) return forward.id;
+  const backward = prospects.slice(0, Math.max(currentIndex, 0)).find((item) => item.status === "new");
+  if (backward) return backward.id;
+  return prospects.find((item) => item.id !== currentId)?.id ?? currentId;
+}
+
 export default function ProspectsPage() {
-  const router = useRouter();
   const { text } = useLanguage();
   const [incomingNoticeCode] = useState<string | null>(() =>
     typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("notice") : null,
@@ -160,6 +167,7 @@ export default function ProspectsPage() {
   const update = useCallback(async (status: "approved" | "discarded") => {
     if (!selected) return;
     setError(null);
+    setNotice(null);
     const response = await fetch("/api/prospects", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -174,14 +182,22 @@ export default function ProspectsPage() {
       setError(body.detail);
       return;
     }
-    setProspects((current) => current.map((item) => item.id === selected.id ? { ...item, status } : item));
-    if (status === "approved") {
-      router.push("/enviar?notice=draft-ready");
-      router.refresh();
-      return;
-    }
-    moveSelection(1, selected.id);
-  }, [moveSelection, router, selected, selectedDraft]);
+    const nextProspects = prospects.map((item) => item.id === selected.id ? { ...item, status } : item);
+    setProspects(nextProspects);
+    const nextSelectedId = pickNextReviewProspect(nextProspects, selected.id);
+    if (nextSelectedId) setSelectedId(nextSelectedId);
+    setNotice(
+      status === "approved"
+        ? text(
+            "Prospect approved. The outreach draft is now ready, and you can keep reviewing the next company.",
+            "Prospecto aprobado. El borrador de contacto ya está listo y puedes seguir revisando la siguiente empresa.",
+          )
+        : text(
+            "Prospect discarded. Moving on to the next review candidate.",
+            "Prospecto descartado. Seguimos con el siguiente candidato de revisión.",
+          ),
+    );
+  }, [prospects, selected, selectedDraft, text]);
 
   useEffect(() => {
     if (!selected || typeof window === "undefined") return;

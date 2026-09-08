@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { buildChannelHref, detectBestChannel } from "@/lib/channel-policy";
+import { categoryShiftFor } from "@/lib/rubric-adjustments";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -75,7 +77,7 @@ export async function processScanPipeline({
 }: {
   admin: AdminClient;
   tenant: TenantRecord;
-  profile: { id: string; raw_answers: RawAnswers };
+  profile: { id: string; raw_answers: RawAnswers; icp?: unknown };
   scan: ScanRecord;
   jobId?: string;
 }) {
@@ -98,6 +100,7 @@ export async function processScanPipeline({
 
     const prospects = scoreAndNormalizeProspects(discovered, {
       answers: profile.raw_answers,
+      icp: profile.icp,
       tenant,
       scan,
     });
@@ -204,6 +207,7 @@ export async function createManualProspect({
       enrichment: { mode: "manual" },
     },
     profile?.raw_answers ?? {},
+    null,
     tenant,
     { id: scanId, city: payload.city ?? "", country: payload.country ?? "", radius_m: 0, categories: payload.category ? [payload.category] : [], sources: ["manual"] },
   );
@@ -400,18 +404,16 @@ export function buildChannelUrl(message: {
     | null;
 }) {
   const prospect = Array.isArray(message.prospects) ? message.prospects[0] ?? null : message.prospects;
-  const email = normalizeOptional(prospect?.email);
-  const phone = normalizePhone(prospect?.phone);
-  if (message.channel === "email" && email) {
-    const params = new URLSearchParams();
-    if (message.subject) params.set("subject", message.subject);
-    params.set("body", message.body);
-    return `mailto:${email}?${params.toString()}`;
-  }
-  if ((message.channel === "whatsapp_manual" || message.channel === "business_published_contact") && phone) {
-    return `https://wa.me/${phone.replace(/\D/g, "")}?text=${encodeURIComponent(message.body)}`;
-  }
-  return prospect?.website ?? null;
+  return buildChannelHref({
+    channel: message.channel,
+    subject: message.subject,
+    body: message.body,
+    contact: {
+      email: prospect?.email,
+      phone: prospect?.phone,
+      website: prospect?.website,
+    },
+  });
 }
 
 async function discoverProspects(scan: ScanRecord, defaultMarketLang: string) {
@@ -441,16 +443,17 @@ type ProspectSeed = Omit<ProspectCandidate, "score" | "score_reasons" | "best_ch
 
 function scoreAndNormalizeProspects(discovered: ProspectSeed[], context: {
   answers: RawAnswers;
+  icp?: unknown;
   tenant: TenantRecord;
   scan: ScanRecord;
 }) {
   return discovered
-    .map((seed) => scoreProspect(seed, context.answers, context.tenant, context.scan))
+    .map((seed) => scoreProspect(seed, context.answers, context.icp, context.tenant, context.scan))
     .sort((left, right) => right.score - left.score)
     .slice(0, 100);
 }
 
-function scoreProspect(seed: ProspectSeed, answers: RawAnswers, tenant: TenantRecord, scan: ScanRecord): ProspectCandidate {
+function scoreProspect(seed: ProspectSeed, answers: RawAnswers, icp: unknown, tenant: TenantRecord, scan: ScanRecord): ProspectCandidate {
   const neverFit = normalizeTokens(answers["answer-3"]);
   const growth = normalizeTokens(answers["answer-4"]);
   const differentiators = normalizeTokens(answers["answer-5"]);
@@ -510,6 +513,18 @@ function scoreProspect(seed: ProspectSeed, answers: RawAnswers, tenant: TenantRe
     if (reasons.length < 3) reasons.push(`Located inside the active market: ${scan.city}`);
   }
 
+  const learnedCategoryShift = categoryShiftFor(icp, seed.category);
+  if (learnedCategoryShift !== 0) {
+    score += learnedCategoryShift;
+    if (reasons.length < 3) {
+      reasons.push(
+        learnedCategoryShift > 0
+          ? "Recent outcomes are strengthening this category"
+          : "Recent outcomes are weakening this category",
+      );
+    }
+  }
+
   score = clamp(score, 8, 98);
 
   while (reasons.length < 3) {
@@ -543,13 +558,6 @@ function fallbackReason(index: number, seed: ProspectSeed, tenant: TenantRecord)
   if (index === 0) return `${tenant.name} can now review this company with real market context`;
   if (index === 1 && seed.category) return `Public category signal: ${seed.category}`;
   return "Captured from a live company search in this workspace";
-}
-
-function detectBestChannel(seed: ProspectSeed) {
-  if (seed.email) return "email";
-  if (seed.phone) return "whatsapp_manual";
-  if (seed.website) return "business_published_contact";
-  return "business_published_contact";
 }
 
 function addDays(days: number) {
@@ -826,9 +834,4 @@ function extractCity(address: string | null, fallbackCity: string) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(value)));
-}
-
-function normalizePhone(value: string | null | undefined) {
-  const phone = normalizeOptional(value);
-  return phone ? phone.replace(/[^\d+]/g, "") : null;
 }

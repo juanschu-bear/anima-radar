@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import AppShell, { ButtonArrow, SectionHeading } from "@/components/AppShell";
 import { useLanguage } from "@/components/LanguageProvider";
+import { buildChannelHref, describeChannelPolicy, labelChannel } from "@/lib/channel-policy";
 
 type Message = {
   id: string;
@@ -16,7 +17,7 @@ type Message = {
   sent_at: string | null;
   created_at: string;
   edited?: boolean;
-  prospects: { name?: string; status?: string; best_channel?: string; email?: string | null; phone?: string | null; website?: string | null } | null;
+  prospects: { name?: string; status?: string; best_channel?: string; email?: string | null; phone?: string | null; website?: string | null; instagram?: string | null; country?: string | null } | null;
 };
 
 export default function SendPage() {
@@ -121,6 +122,7 @@ export default function SendPage() {
           <p className="eyebrow">{text("Message sequence", "Secuencia de mensajes")}</p>
           <h2>{text("Edit the wording, then", "Edita el texto y luego")}<br /><em>{text("send it as a human.", "envíalo como humano.")}</em></h2>
           <p>{text("Every saved edit becomes the company record. Follow-ups stay visible with their due dates instead of disappearing into email.", "Cada edición guardada se convierte en el registro de la empresa. Los seguimientos siguen visibles con su fecha prevista en vez de desaparecer en el correo.")}</p>
+          <small>{messages[0]?.prospects?.country ? describeChannelPolicy(messages[0].prospects.country, text) : text("Channel policy depends on the prospect market and the contact path you can verify publicly.", "La política del canal depende del mercado del prospecto y de la vía de contacto que puedas verificar públicamente.")}</small>
         </section>
       </div>
 
@@ -135,7 +137,18 @@ export default function SendPage() {
             {messages.map((message) => {
               const currentSubject = drafts[message.id]?.subject ?? "";
               const currentBody = drafts[message.id]?.body ?? message.body;
-              const channelHref = buildChannelHref(message, currentSubject, currentBody);
+              const channelHref = buildChannelHref({
+                channel: message.channel,
+                subject: currentSubject,
+                body: currentBody,
+                contact: {
+                  email: message.prospects?.email,
+                  phone: message.prospects?.phone,
+                  website: message.prospects?.website,
+                  instagram: message.prospects?.instagram,
+                  country: message.prospects?.country,
+                },
+              });
               return (
                 <article className="activity-row" key={message.id}>
                   <span className="activity-icon">{message.prospects?.name?.slice(0, 1) ?? "M"}</span>
@@ -173,23 +186,4 @@ function stepLabel(step: number, text: (english: string, spanish: string) => str
   if (step === 1) return text("Step 1", "Paso 1");
   if (step === 2) return text("Follow-up 1", "Seguimiento 1");
   return text("Follow-up 2", "Seguimiento 2");
-}
-
-function labelChannel(channel: string, text: (english: string, spanish: string) => string) {
-  if (channel === "email") return text("Email", "Correo");
-  if (channel === "whatsapp_manual") return "WhatsApp";
-  return text("Published business contact", "Contacto público del negocio");
-}
-
-function buildChannelHref(message: Message, subject: string, body: string) {
-  if (message.channel === "email" && message.prospects?.email) {
-    const params = new URLSearchParams();
-    if (subject.trim()) params.set("subject", subject.trim());
-    params.set("body", body);
-    return `mailto:${message.prospects.email}?${params.toString()}`;
-  }
-  if ((message.channel === "whatsapp_manual" || message.channel === "business_published_contact") && message.prospects?.phone) {
-    return `https://wa.me/${message.prospects.phone.replace(/\D/g, "")}?text=${encodeURIComponent(body)}`;
-  }
-  return message.prospects?.website ?? message.channel_url ?? null;
 }
