@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { FormEvent, useEffect, useState } from "react";
 import AppShell, { SectionHeading } from "@/components/AppShell";
 import { useLanguage } from "@/components/LanguageProvider";
@@ -20,8 +21,17 @@ type SystemStatus = {
     has_business_dna: boolean;
     scans: number;
     prospects: number;
+    approved_prospects: number;
+    sent_prospects: number;
     messages: number;
     outcomes: number;
+    positive_replies: number;
+  };
+  readiness: {
+    state: "needs_profile" | "ready_to_scan" | "needs_prospects" | "review_ready" | "outreach_ready" | "awaiting_outcomes" | "learning_live";
+    complete: boolean;
+    next_route: string;
+    completion_ratio: number;
   };
 };
 
@@ -85,8 +95,11 @@ export default function SettingsPage() {
   ];
 
   const workflowRows = [
+    [text("Readiness", "Preparación"), readinessLabel(system?.readiness.state, text)],
     [text("Scans", "Escaneos"), String(system?.workflow.scans ?? 0)],
     [text("Prospects", "Prospectos"), String(system?.workflow.prospects ?? 0)],
+    [text("Approved prospects", "Prospectos aprobados"), String(system?.workflow.approved_prospects ?? 0)],
+    [text("Sent prospects", "Prospectos enviados"), String(system?.workflow.sent_prospects ?? 0)],
     [text("Messages", "Mensajes"), String(system?.workflow.messages ?? 0)],
     [text("Outcomes", "Resultados"), String(system?.workflow.outcomes ?? 0)],
   ];
@@ -138,7 +151,7 @@ export default function SettingsPage() {
         <section className="panel settings-card">
           <div className="panel-title">
             <h2>{text("Workspace readiness", "Preparación del espacio")}</h2>
-            <span className="feature-status feature-status--ready">RLS</span>
+            <span className={`feature-status ${system?.readiness.complete ? "feature-status--ready" : "feature-status--partial"}`}>{readinessLabel(system?.readiness.state, text)}</span>
           </div>
 
           <div className="connection-list">
@@ -170,13 +183,18 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <span className="connection-dot connection-dot--ready" />
+              <span className={`connection-dot ${system?.workflow.prospects ? "connection-dot--ready" : ""}`} />
               <div>
                 <strong>{text("Prospect workflow", "Flujo de prospectos")}</strong>
                 <small>{text("Scans, manual prospects, approvals, outreach and outcomes all stay inside the selected company.", "Escaneos, prospectos manuales, aprobaciones, contacto y resultados permanecen dentro de la empresa seleccionada.")}</small>
               </div>
-              <b>{text("Ready", "Listo")}</b>
+              <b>{system?.workflow.prospects ? text("Running", "En marcha") : text("Not started", "No iniciado")}</b>
             </div>
+          </div>
+
+          <div className="notice" aria-live="polite">
+            <strong>{text("Next best action", "Siguiente mejor acción")}</strong>{" "}
+            <Link href={(system?.readiness.next_route ?? "/panel") as Route}>{nextStepLabel(system?.readiness.state, text)} ↗</Link>
           </div>
         </section>
       </div>
@@ -216,17 +234,54 @@ export default function SettingsPage() {
       <section className="readiness-note">
         <div>
           <p className="eyebrow">{text("Administration", "Administración")}</p>
-          <h2>{text("Companies and users are managed separately.", "Las empresas y los usuarios se gestionan por separado.")}</h2>
+          <h2>{system?.actor.platform_admin ? text("You are the platform administrator.", "Tú eres el administrador de la plataforma.") : text("You are inside one company workspace.", "Estás dentro del espacio de una sola empresa.")}</h2>
         </div>
 
         <p>
-          {text(
-            "Platform administrators can switch companies in the sidebar, create companies and assign users without mixing tenant data.",
-            "Los administradores de plataforma pueden cambiar de empresa en la barra lateral, crear empresas y asignar usuarios sin mezclar datos entre tenants.",
-          )}{" "}
-          <Link href="/admin/companies">{text("Open companies", "Abrir empresas")} ↗</Link>
+          {system?.actor.platform_admin
+            ? text(
+              "Use Companies to move between client workspaces and Access to provision logins without mixing tenant data.",
+              "Usa Empresas para moverte entre espacios de clientes y Acceso para crear logins sin mezclar datos entre tenants.",
+            )
+            : text(
+              "Everything you do here affects only the currently active company workspace.",
+              "Todo lo que haces aquí afecta solo al espacio de la empresa activa.",
+            )}{" "}
+          {system?.actor.platform_admin && <Link href="/admin/companies">{text("Open companies", "Abrir empresas")} ↗</Link>}
         </p>
       </section>
     </AppShell>
   );
+}
+
+function readinessLabel(
+  state: SystemStatus["readiness"]["state"] | undefined,
+  text: (english: string, spanish: string) => string,
+) {
+  switch (state) {
+    case "needs_profile": return text("Needs Business DNA", "Falta ADN del negocio");
+    case "ready_to_scan": return text("Ready to scan", "Lista para escanear");
+    case "needs_prospects": return text("Needs prospects", "Faltan prospectos");
+    case "review_ready": return text("Review queue ready", "Cola de revisión lista");
+    case "outreach_ready": return text("Outreach ready", "Contacto listo");
+    case "awaiting_outcomes": return text("Awaiting outcomes", "Esperando resultados");
+    case "learning_live": return text("Learning live", "Aprendiendo en vivo");
+    default: return text("Loading", "Cargando");
+  }
+}
+
+function nextStepLabel(
+  state: SystemStatus["readiness"]["state"] | undefined,
+  text: (english: string, spanish: string) => string,
+) {
+  switch (state) {
+    case "needs_profile": return text("Complete Business DNA", "Completar ADN del negocio");
+    case "ready_to_scan": return text("Create the first radar scan", "Crear el primer escaneo");
+    case "needs_prospects": return text("Open the review queue", "Abrir la cola de revisión");
+    case "review_ready": return text("Approve a real prospect", "Aprobar un prospecto real");
+    case "outreach_ready": return text("Send the prepared outreach", "Enviar el contacto preparado");
+    case "awaiting_outcomes": return text("Record the business result", "Registrar el resultado");
+    case "learning_live": return text("Inspect Learning Loop", "Inspeccionar el ciclo de aprendizaje");
+    default: return text("Open workspace", "Abrir el espacio");
+  }
 }

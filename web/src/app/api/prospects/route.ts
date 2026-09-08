@@ -61,7 +61,7 @@ export async function PATCH(request: Request) {
   const { data: prospect, error: prospectError } = await admin.from("prospects").update({ status }).eq("id", id).eq("tenant_id", auth.profile.tenant_id).select("id,tenant_id,scan_id,source,source_id,name,category,address,city,country,website,phone,email,instagram,rating,review_count,raw,enrichment,score,score_reasons,best_channel,status").single();
   if (prospectError) return NextResponse.json({ detail: prospectError.message }, { status: 502 });
 
-  let message = null;
+  let messages = null;
   if (status === "approved") {
     const [{ data: tenant }, { data: profile }] = await Promise.all([
       admin.from("tenants").select("id,name,default_market_lang").eq("id", auth.profile.tenant_id).maybeSingle(),
@@ -69,7 +69,7 @@ export async function PATCH(request: Request) {
     ]);
     if (tenant && profile) {
       try {
-        message = await createOrRefreshMessageDraft({
+        messages = await createOrRefreshMessageDraft({
           admin,
           tenant,
           profileAnswers: profile.raw_answers ?? {},
@@ -81,5 +81,5 @@ export async function PATCH(request: Request) {
       }
     }
   }
-  return NextResponse.json({ prospect, message });
+  return NextResponse.json({ prospect, messages });
 }

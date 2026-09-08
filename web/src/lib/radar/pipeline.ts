@@ -204,28 +204,35 @@ export async function createOrRefreshMessageDraft({
   prospect: ProspectRecord;
   authorName?: string | null;
 }) {
-  const draft = buildDraftMessage({ tenant, profileAnswers, prospect, authorName });
-  const { data, error } = await admin
+  const drafts = buildDraftSequence({ tenant, profileAnswers, prospect, authorName });
+  const { error } = await admin
     .from("messages")
     .upsert(
-      {
+      drafts.map((draft) => ({
         tenant_id: tenant.id,
         prospect_id: prospect.id,
-        step: 1,
+        step: draft.step,
         lang: draft.lang,
         channel: draft.channel,
         subject: draft.subject,
         body: draft.body,
         generated_body: draft.body,
         edited: false,
-      },
+        due_at: draft.due_at,
+      })),
       { onConflict: "prospect_id,step" },
     )
-    .select("id,prospect_id,step,lang,channel,subject,body,due_at,sent_at,created_at")
-    .single();
+    .select("id");
 
   if (error) throw new Error(error.message);
-  return data;
+  const { data, error: selectError } = await admin
+    .from("messages")
+    .select("id,prospect_id,step,lang,channel,subject,body,due_at,sent_at,created_at,edited")
+    .eq("tenant_id", tenant.id)
+    .eq("prospect_id", prospect.id)
+    .order("step", { ascending: true });
+  if (selectError) throw new Error(selectError.message);
+  return data ?? [];
 }
 
 export function buildDraftMessage({
@@ -275,6 +282,49 @@ export function buildDraftMessage({
     subject: language === "es" ? `Idea para ${prospect.name}` : `Idea for ${prospect.name}`,
     body: [intro, context ? context : null, value.trim(), ask, language === "es" ? `Saludos,\n${signedBy}` : `Best,\n${signedBy}`].filter(Boolean).join("\n\n"),
   };
+}
+
+function buildDraftSequence({
+  tenant,
+  profileAnswers,
+  prospect,
+  authorName,
+}: {
+  tenant: TenantRecord;
+  profileAnswers: RawAnswers;
+  prospect: ProspectRecord;
+  authorName?: string | null;
+}) {
+  const primary = buildDraftMessage({ tenant, profileAnswers, prospect, authorName });
+  const signer = extractSignerName(profileAnswers["answer-7"]) || authorName || tenant.name;
+  const language = primary.lang;
+  const checkIn = language === "es"
+    ? `Retomo esta nota por si ahora sí encaja revisar ${tenant.name} para ${prospect.name}.`
+    : `Following up in case now is a better moment to review ${tenant.name} for ${prospect.name}.`;
+  const addedReason = prospect.score_reasons[1] ?? (language === "es" ? "también vimos una afinidad adicional con tu mercado" : "we also noticed another signal that fits your market");
+  const closer = firstSentence(profileAnswers["answer-8"]) || (language === "es" ? "Si te sirve, coordinamos una llamada breve." : "If it helps, we can set up a short call.");
+  const finalNudge = language === "es"
+    ? `Último seguimiento breve: ${addedReason}.`
+    : `One last short follow-up: ${addedReason}.`;
+  return [
+    { step: 1, due_at: null, ...primary },
+    {
+      step: 2,
+      due_at: addDays(3),
+      lang: language,
+      channel: primary.channel,
+      subject: primary.subject,
+      body: [checkIn, addedReason, closer, language === "es" ? `Saludos,\n${signer}` : `Best,\n${signer}`].join("\n\n"),
+    },
+    {
+      step: 3,
+      due_at: addDays(7),
+      lang: language,
+      channel: primary.channel,
+      subject: primary.subject,
+      body: [finalNudge, closer, language === "es" ? `Gracias,\n${signer}` : `Thanks,\n${signer}`].join("\n\n"),
+    },
+  ];
 }
 
 export function prospectStatusFromOutcome(kind: OutcomeKind) {
@@ -469,6 +519,12 @@ function detectBestChannel(seed: ProspectSeed) {
   if (seed.phone) return "whatsapp_manual";
   if (seed.website) return "business_published_contact";
   return "business_published_contact";
+}
+
+function addDays(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
 }
 
 async function searchGooglePlaces({

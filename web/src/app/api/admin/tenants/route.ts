@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { deriveWorkspaceReadiness } from "@/lib/workspace-readiness";
 
 async function requirePlatformAdmin() {
   const supabase = await createClient();
@@ -14,13 +15,41 @@ async function requirePlatformAdmin() {
 export async function GET() {
   const auth = await requirePlatformAdmin();
   if (auth.error) return auth.error;
-  const [{ data, error }, { data: profiles }] = await Promise.all([
+  const [{ data, error }, { data: profiles }, { data: scans }, { data: prospects }, { data: outcomes }] = await Promise.all([
     auth.admin.from("tenants").select("id,name,default_market_lang,created_at").order("created_at", { ascending: true }),
     auth.admin.from("business_profiles").select("tenant_id"),
+    auth.admin.from("scans").select("tenant_id,status"),
+    auth.admin.from("prospects").select("tenant_id,status"),
+    auth.admin.from("outcomes").select("tenant_id,kind"),
   ]);
   if (error) return NextResponse.json({ detail: error.message }, { status: 502 });
-  const configured = new Set((profiles ?? []).map((profile) => profile.tenant_id));
-  return NextResponse.json({ tenants: (data ?? []).map((tenant) => ({ ...tenant, has_profile: configured.has(tenant.id) })), active_tenant_id: auth.actor.tenant_id });
+  const profileCounts = countByTenant(profiles ?? []);
+  const scanCounts = countByTenant(scans ?? []);
+  const outcomeCounts = countByTenant(outcomes ?? []);
+  const positiveReplies = countByTenant((outcomes ?? []).filter((row) => row.kind === "replied_positive"));
+  const prospectCounts = countByTenant(prospects ?? []);
+  const approvedProspects = countByTenant((prospects ?? []).filter((row) => row.status === "approved"));
+  const sentProspects = countByTenant((prospects ?? []).filter((row) => row.status === "sent"));
+  return NextResponse.json({
+    tenants: (data ?? []).map((tenant) => {
+      const metrics = {
+        profiles: profileCounts.get(tenant.id) ?? 0,
+        scans: scanCounts.get(tenant.id) ?? 0,
+        prospects: prospectCounts.get(tenant.id) ?? 0,
+        approved: approvedProspects.get(tenant.id) ?? 0,
+        sent: sentProspects.get(tenant.id) ?? 0,
+        outcomes: outcomeCounts.get(tenant.id) ?? 0,
+        positive_replies: positiveReplies.get(tenant.id) ?? 0,
+      };
+      return {
+        ...tenant,
+        has_profile: metrics.profiles > 0,
+        metrics,
+        workspace_readiness: deriveWorkspaceReadiness(metrics),
+      };
+    }),
+    active_tenant_id: auth.actor.tenant_id,
+  });
 }
 
 export async function POST(request: Request) {
@@ -37,4 +66,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ detail: "The company could not be activated. Nothing was created." }, { status: 502 });
   }
   return NextResponse.json({ tenant: { ...data, has_profile: false }, active_tenant_id: data.id }, { status: 201 });
+}
+
+function countByTenant(rows: Array<{ tenant_id: string }>) {
+  return rows.reduce((map, row) => {
+    map.set(row.tenant_id, (map.get(row.tenant_id) ?? 0) + 1);
+    return map;
+  }, new Map<string, number>());
 }
