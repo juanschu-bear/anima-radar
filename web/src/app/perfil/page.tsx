@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import AppShell, { ButtonArrow, SectionHeading } from "@/components/AppShell";
 import { useLanguage } from "@/components/LanguageProvider";
@@ -18,6 +19,7 @@ const questions = [
 ] as const;
 
 export default function ProfilePage() {
+  const router = useRouter();
   const { language, text } = useLanguage();
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [tenantId, setTenantId] = useState<string | null>(null);
@@ -88,6 +90,7 @@ export default function ProfilePage() {
       }
       if (tenantId) window.localStorage.removeItem(draftKey(tenantId));
       setSaved(true);
+      router.replace("/radar?setup=business-dna-complete");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : text("Could not save Business DNA", "No se pudo guardar el ADN del negocio"));
     } finally {
