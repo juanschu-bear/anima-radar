@@ -22,7 +22,12 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   const isAuthCodeLanding = request.nextUrl.pathname === "/" && request.nextUrl.searchParams.has("code");
   const publicPath = request.nextUrl.pathname.startsWith("/login") || request.nextUrl.pathname.startsWith("/auth/callback") || request.nextUrl.pathname === "/api/setup/owner" || isAuthCodeLanding;
-  if (!user && !publicPath) return NextResponse.redirect(new URL("/login", request.url));
+  if (!user && !publicPath) {
+    if (request.nextUrl.pathname.startsWith("/api/")) {
+      return NextResponse.json({ detail: "Your session has expired. Please sign in again." }, { status: 401 });
+    }
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
   return response;
 }
 

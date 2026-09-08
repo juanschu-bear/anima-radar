@@ -8,7 +8,7 @@ export async function GET() {
   const admin = createAdminClient();
   const { data, error } = await admin.from("business_profiles").select("id,raw_answers,version,created_at").eq("tenant_id", auth.profile.tenant_id).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (error) return NextResponse.json({ detail: error.message }, { status: 502 });
-  return NextResponse.json({ profile: data ?? null });
+  return NextResponse.json({ profile: data ?? null, tenant_id: auth.profile.tenant_id });
 }
 
 export async function POST(request: Request) {
