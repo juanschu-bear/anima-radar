@@ -59,7 +59,13 @@ export default function CompaniesPage() {
     const response = await fetch("/api/admin/active-tenant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tenant_id: id, copy_profile_from: copyCurrentProfile ? activeId : undefined }) });
     const body = await response.json();
     if (!response.ok) { setError(body.detail); setSwitching(""); return; }
-    router.push(copyCurrentProfile ? "/radar?setup=business-dna-copied" : `/panel?tenant=${id}`);
+    const targetCompany = companies.find((company) => company.id === id);
+    const destination = copyCurrentProfile
+      ? "/radar?setup=business-dna-copied"
+      : targetCompany?.has_profile
+        ? `/panel?tenant=${id}`
+        : "/perfil?setup=new-company";
+    router.push(destination as Route);
     router.refresh();
   }
 
