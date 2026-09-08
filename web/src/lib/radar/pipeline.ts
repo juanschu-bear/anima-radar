@@ -84,10 +84,35 @@ export async function processScanPipeline({
 
   try {
     const discovered = await discoverProspects(scan, tenant.default_market_lang);
+    await updateScanState(admin, scan.id, {
+      status: "enriching",
+      counts: {
+        found: discovered.length,
+        unique: discovered.length,
+        enriched: 0,
+        scored: 0,
+        drafted: 0,
+      },
+      error: null,
+    });
+
     const prospects = scoreAndNormalizeProspects(discovered, {
       answers: profile.raw_answers,
       tenant,
       scan,
+    });
+    const enrichedCount = prospects.filter((item) => item.website || item.phone || item.email).length;
+
+    await updateScanState(admin, scan.id, {
+      status: "scoring",
+      counts: {
+        found: discovered.length,
+        unique: prospects.length,
+        enriched: enrichedCount,
+        scored: 0,
+        drafted: 0,
+      },
+      error: null,
     });
 
     if (prospects.length) {
@@ -106,10 +131,16 @@ export async function processScanPipeline({
     const counts = {
       found: discovered.length,
       unique: prospects.length,
-      enriched: prospects.filter((item) => item.website || item.phone).length,
+      enriched: enrichedCount,
       scored: prospects.length,
       drafted: 0,
     };
+
+    await updateScanState(admin, scan.id, {
+      status: "drafting",
+      counts,
+      error: null,
+    });
 
     await updateScanState(admin, scan.id, {
       status: "done",
@@ -511,7 +542,7 @@ function scoreProspect(seed: ProspectSeed, answers: RawAnswers, tenant: TenantRe
 function fallbackReason(index: number, seed: ProspectSeed, tenant: TenantRecord) {
   if (index === 0) return `${tenant.name} can now review this company with real market context`;
   if (index === 1 && seed.category) return `Public category signal: ${seed.category}`;
-  return "Captured from a live company search instead of mock data";
+  return "Captured from a live company search in this workspace";
 }
 
 function detectBestChannel(seed: ProspectSeed) {

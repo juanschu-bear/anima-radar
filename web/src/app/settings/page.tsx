@@ -91,7 +91,7 @@ export default function SettingsPage() {
     [text("Google Places", "Google Places"), system?.providers.google_places ? text("Live discovery enabled", "Descubrimiento activo") : text("Not configured", "No configurado")],
     [text("Exa search", "Búsqueda Exa"), system?.providers.exa ? text("Live discovery enabled", "Descubrimiento activo") : text("Not configured", "No configurado")],
     [text("Manual prospect fallback", "Fallback manual de prospectos"), system?.providers.manual_prospect_fallback ? text("Always available", "Siempre disponible") : text("Off", "Apagado")],
-    [text("Current actor", "Actor actual"), system?.actor.platform_admin ? text("Platform admin", "Admin de plataforma") : text("Company user", "Usuario de empresa")],
+    [text("Current actor", "Actor actual"), system?.actor.platform_admin ? text("Platform admin", "Admin de plataforma") : system?.actor.role === "owner" ? text("Company admin", "Admin de empresa") : text("Standard user", "Usuario estándar")],
   ];
 
   const workflowRows = [
@@ -99,7 +99,7 @@ export default function SettingsPage() {
     [text("Scans", "Escaneos"), String(system?.workflow.scans ?? 0)],
     [text("Prospects", "Prospectos"), String(system?.workflow.prospects ?? 0)],
     [text("Approved prospects", "Prospectos aprobados"), String(system?.workflow.approved_prospects ?? 0)],
-    [text("Sent prospects", "Prospectos enviados"), String(system?.workflow.sent_prospects ?? 0)],
+    [text("Contacted prospects", "Prospectos contactados"), String(system?.workflow.sent_prospects ?? 0)],
     [text("Messages", "Mensajes"), String(system?.workflow.messages ?? 0)],
     [text("Outcomes", "Resultados"), String(system?.workflow.outcomes ?? 0)],
   ];
@@ -240,12 +240,16 @@ export default function SettingsPage() {
         <p>
           {system?.actor.platform_admin
             ? text(
-              "Use Companies to move between client workspaces and Access to provision logins without mixing tenant data.",
-              "Usa Empresas para moverte entre espacios de clientes y Acceso para crear logins sin mezclar datos entre tenants.",
+              "Use Companies to move between client workspaces and Users to provision logins without mixing tenant data.",
+              "Usa Empresas para moverte entre espacios de clientes y Usuarios para crear accesos sin mezclar datos entre tenants.",
             )
             : text(
-              "Everything you do here affects only the currently active company workspace.",
-              "Todo lo que haces aquí afecta solo al espacio de la empresa activa.",
+              system?.actor.role === "owner"
+                ? "You are the company admin for this workspace. You can maintain its Business DNA and operator flow, but not the whole platform."
+                : "Everything you do here affects only the currently active company workspace.",
+              system?.actor.role === "owner"
+                ? "Eres el administrador de empresa de este espacio. Puedes mantener su ADN del negocio y su flujo operativo, pero no toda la plataforma."
+                : "Todo lo que haces aquí afecta solo al espacio de la empresa activa.",
             )}{" "}
           {system?.actor.platform_admin && <Link href="/admin/companies">{text("Open companies", "Abrir empresas")} ↗</Link>}
         </p>

@@ -4,6 +4,8 @@ import { isPlatformAdmin } from "@/lib/access";
 import { requireWorkspaceUser } from "@/lib/api-auth";
 import { deriveWorkspaceReadiness } from "@/lib/workspace-readiness";
 
+const CONTACTED_STATUSES = ["sent", "replied", "converted", "lost"] as const;
+
 export async function GET() {
   const auth = await requireWorkspaceUser();
   if (auth.error) return auth.error;
@@ -16,7 +18,7 @@ export async function GET() {
     admin.from("scans").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
     admin.from("prospects").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
     admin.from("prospects").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "approved"),
-    admin.from("prospects").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "sent"),
+    admin.from("prospects").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).in("status", [...CONTACTED_STATUSES]),
     admin.from("messages").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
     admin.from("outcomes").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("kind", "replied_positive"),
     admin.from("outcomes").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),

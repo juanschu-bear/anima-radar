@@ -19,6 +19,13 @@ type Dashboard = {
     messages: number;
     outcomes: number;
   };
+  timeline: Array<{ key: string; label: string; start: string; contacted: number; replied: number; converted: number }>;
+  insights: {
+    winning_reasons: Array<{ label: string; count: number }>;
+    stalled_reasons: Array<{ label: string; count: number }>;
+    active_categories: Array<{ label: string; count: number }>;
+    draft_control: { sent_total: number; edited_total: number; edited_share: number };
+  };
   workspace_readiness: { state: string; complete: boolean; next_route: string };
   latest_scan: { id: string; city: string; country: string; radius_m: number; status: string; counts: Record<string, number>; created_at: string } | null;
 };
@@ -91,7 +98,7 @@ export default function PanelPage() {
           <div className="observatory-header-note">
             <span className="live-pulse" />
             {readinessTitle(readinessState, text)}
-            <small>{text("No sample records", "Sin datos de muestra")}</small>
+            <small>{text("Live workspace data only", "Solo datos reales del espacio")}</small>
           </div>
         </header>
 
@@ -109,9 +116,9 @@ export default function PanelPage() {
             <small>{text("waiting or approved", "en espera o aprobadas")}</small>
           </div>
           <div className="observatory-metric">
-            <span>{text("SENT", "ENVIADOS")}</span>
+            <span>{text("CONTACTED", "CONTACTADOS")}</span>
             <strong>{dashboard?.counts.sent_prospects ?? "—"}</strong>
-            <small>{text("manual sends already logged", "envíos manuales ya registrados")}</small>
+            <small>{text("outreach already logged", "contactos ya registrados")}</small>
           </div>
           <div className="observatory-metric">
             <span>{text("ORDERS", "PEDIDOS")}</span>
@@ -191,6 +198,54 @@ export default function PanelPage() {
             <div className="flow-final"><span>{text("Outcomes", "Resultados")}</span><strong>{dashboard?.counts.outcomes ?? 0}</strong><small>{text("recorded", "registrados")}</small></div>
           </div>
         </section>
+
+        <section className="panel analytics-panel">
+          <div className="panel-title">
+            <h2>{text("Live performance", "Rendimiento real")}</h2>
+            <span className="feature-status feature-status--ready">{text("Last 6 weeks", "Últimas 6 semanas")}</span>
+          </div>
+          <div className="analytics-grid">
+            <div className="analytics-card">
+              <p className="eyebrow">{text("Weekly rhythm", "Ritmo semanal")}</p>
+              <div className="timeline-table">
+                <div className="timeline-head">
+                  <span>{text("Week", "Semana")}</span>
+                  <span>{text("Contacted", "Contactados")}</span>
+                  <span>{text("Replied", "Respondieron")}</span>
+                  <span>{text("Converted", "Convirtieron")}</span>
+                </div>
+                {(dashboard?.timeline ?? []).map((week) => (
+                  <div className="timeline-row" key={week.key}>
+                    <span>{week.label}</span>
+                    <strong>{week.contacted}</strong>
+                    <strong>{week.replied}</strong>
+                    <strong>{week.converted}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="analytics-card">
+              <p className="eyebrow">{text("What seems to work", "Lo que parece funcionar")}</p>
+              <h3>{text("Winning reasons", "Razones ganadoras")}</h3>
+              <InsightList items={dashboard?.insights.winning_reasons ?? []} emptyLabel={text("No reply signal yet.", "Todavía no hay señal de respuesta.")} />
+              <h3>{text("Most active categories", "Categorías más activas")}</h3>
+              <InsightList items={dashboard?.insights.active_categories ?? []} emptyLabel={text("No category pattern yet.", "Todavía no hay patrón por categoría.")} />
+            </div>
+
+            <div className="analytics-card">
+              <p className="eyebrow">{text("Human control", "Control humano")}</p>
+              <h3>{text("Draft edits before send", "Ediciones antes del envío")}</h3>
+              <div className="analytics-metric-stack">
+                <div><span>{text("Sent messages", "Mensajes enviados")}</span><strong>{dashboard?.insights.draft_control.sent_total ?? 0}</strong></div>
+                <div><span>{text("Edited before send", "Editados antes de enviar")}</span><strong>{dashboard?.insights.draft_control.edited_total ?? 0}</strong></div>
+                <div><span>{text("Edited share", "Proporción editada")}</span><strong>{dashboard?.insights.draft_control.edited_share ?? 0}%</strong></div>
+              </div>
+              <h3>{text("Reasons still stalling", "Razones que aún se frenan")}</h3>
+              <InsightList items={dashboard?.insights.stalled_reasons ?? []} emptyLabel={text("Nothing is stalled yet.", "Todavía no hay razones estancadas.")} />
+            </div>
+          </div>
+        </section>
       </div>
     </AppShell>
   );
@@ -207,4 +262,24 @@ function readinessTitle(state: string | undefined, text: (english: string, spani
     case "learning_live": return text("Learning from live results", "Aprendiendo de resultados reales");
     default: return text("Live tenant data", "Datos reales del tenant");
   }
+}
+
+function InsightList({
+  items,
+  emptyLabel,
+}: {
+  items: Array<{ label: string; count: number }>;
+  emptyLabel: string;
+}) {
+  if (!items.length) return <p className="muted">{emptyLabel}</p>;
+  return (
+    <div className="insight-list">
+      {items.map((item) => (
+        <div key={item.label} className="insight-row">
+          <span>{item.label}</span>
+          <strong>{item.count}</strong>
+        </div>
+      ))}
+    </div>
+  );
 }

@@ -125,7 +125,7 @@ export default function CompaniesPage() {
                 <div>
                   <strong>{company.name}</strong>
                   <small>{company.default_market_lang?.startsWith("es") ? "Español" : "English"} · {readinessLabel(company.workspace_readiness?.state, text)}</small>
-                  <small>{text("Prospects", "Prospectos")}: {company.metrics?.prospects ?? 0} · {text("Sent", "Enviados")}: {company.metrics?.sent ?? 0} · {text("Outcomes", "Resultados")}: {company.metrics?.outcomes ?? 0}</small>
+                  <small>{text("Prospects", "Prospectos")}: {company.metrics?.prospects ?? 0} · {text("Contacted", "Contactados")}: {company.metrics?.sent ?? 0} · {text("Outcomes", "Resultados")}: {company.metrics?.outcomes ?? 0}</small>
                 </div>
                 <div className="company-actions">
                   {company.id === activeId ? (

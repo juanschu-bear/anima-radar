@@ -1,15 +1,47 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireWorkspaceUser } from "@/lib/api-auth";
-import { createManualProspect, createOrRefreshMessageDraft } from "@/lib/radar/pipeline";
+import { buildDraftMessage, createManualProspect, createOrRefreshMessageDraft } from "@/lib/radar/pipeline";
 
 export async function GET() {
   const auth = await requireWorkspaceUser();
   if (auth.error) return auth.error;
   const admin = createAdminClient();
-  const { data, error } = await admin.from("prospects").select("id,scan_id,source,name,category,address,city,country,website,phone,email,instagram,rating,review_count,score,score_reasons,best_channel,status,created_at").eq("tenant_id", auth.profile.tenant_id).order("score", { ascending: false, nullsFirst: false }).limit(100);
+  const [{ data, error }, { data: tenant }, { data: profile }] = await Promise.all([
+    admin
+      .from("prospects")
+      .select("id,scan_id,source,name,category,address,city,country,website,phone,email,instagram,rating,review_count,score,score_reasons,best_channel,status,created_at")
+      .eq("tenant_id", auth.profile.tenant_id)
+      .order("score", { ascending: false, nullsFirst: false })
+      .limit(100),
+    admin.from("tenants").select("id,name,default_market_lang").eq("id", auth.profile.tenant_id).maybeSingle(),
+    admin.from("business_profiles").select("raw_answers").eq("tenant_id", auth.profile.tenant_id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
   if (error) return NextResponse.json({ detail: error.message }, { status: 502 });
-  return NextResponse.json({ prospects: data ?? [] });
+
+  return NextResponse.json({
+    prospects: (data ?? []).map((prospect) => ({
+      ...prospect,
+      draft_preview: tenant && profile
+        ? buildDraftMessage({
+          tenant,
+          profileAnswers: profile.raw_answers ?? {},
+          prospect: {
+            name: prospect.name,
+            city: prospect.city,
+            country: prospect.country,
+            category: prospect.category,
+            website: prospect.website,
+            score_reasons: Array.isArray(prospect.score_reasons)
+              ? prospect.score_reasons.filter((value): value is string => typeof value === "string")
+              : [],
+            best_channel: prospect.best_channel ?? "business_published_contact",
+          },
+          authorName: auth.profile.full_name,
+        })
+        : null,
+    })),
+  });
 }
 
 export async function POST(request: Request) {
@@ -46,7 +78,27 @@ export async function POST(request: Request) {
       payload: { ...payload, name, country: country || undefined },
       profile,
     });
-    return NextResponse.json({ prospect }, { status: 201 });
+    return NextResponse.json({
+      prospect: {
+        ...prospect,
+        draft_preview: profile
+          ? buildDraftMessage({
+            tenant,
+            profileAnswers: profile.raw_answers ?? {},
+            prospect: {
+              name: prospect.name,
+              city: prospect.city,
+              country: prospect.country,
+              category: prospect.category,
+              website: prospect.website,
+              score_reasons: prospect.score_reasons,
+              best_channel: prospect.best_channel,
+            },
+            authorName: auth.profile.full_name,
+          })
+          : null,
+      },
+    }, { status: 201 });
   } catch (cause) {
     return NextResponse.json({ detail: cause instanceof Error ? cause.message : "Could not create prospect" }, { status: 502 });
   }
@@ -55,7 +107,12 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const auth = await requireWorkspaceUser();
   if (auth.error) return auth.error;
-  const { id, status, bulk_min_score: bulkMinScore } = await request.json() as { id?: string; status?: string; bulk_min_score?: number };
+  const { id, status, bulk_min_score: bulkMinScore, preview_override: previewOverride } = await request.json() as {
+    id?: string;
+    status?: string;
+    bulk_min_score?: number;
+    preview_override?: { subject?: string | null; body?: string | null };
+  };
   if (!["new", "approved", "discarded"].includes(status ?? "")) return NextResponse.json({ detail: "Invalid prospect update" }, { status: 400 });
   const admin = createAdminClient();
   const prospectSelect = "id,tenant_id,scan_id,source,source_id,name,category,address,city,country,website,phone,email,instagram,rating,review_count,raw,enrichment,score,score_reasons,best_channel,status";
@@ -126,6 +183,21 @@ export async function PATCH(request: Request) {
           prospect,
           authorName: auth.profile.full_name,
         });
+        const customBody = typeof previewOverride?.body === "string" ? previewOverride.body.trim() : "";
+        const customSubject = typeof previewOverride?.subject === "string" ? previewOverride.subject.trim() : "";
+        if (customBody.length >= 12) {
+          const { error: overrideError } = await admin
+            .from("messages")
+            .update({
+              subject: customSubject || null,
+              body: customBody,
+              edited: true,
+            })
+            .eq("tenant_id", auth.profile.tenant_id)
+            .eq("prospect_id", prospect.id)
+            .eq("step", 1);
+          if (overrideError) return NextResponse.json({ detail: overrideError.message }, { status: 502 });
+        }
       } catch (cause) {
         return NextResponse.json({ detail: cause instanceof Error ? cause.message : "Could not prepare the outreach draft" }, { status: 502 });
       }

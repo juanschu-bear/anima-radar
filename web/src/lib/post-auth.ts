@@ -1,4 +1,4 @@
-import { isPlatformAdmin } from "@/lib/access";
+import { isCompanyAdmin } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function resolvePostAuthPath(userId: string) {
@@ -18,7 +18,7 @@ export async function resolvePostAuthPath(userId: string) {
     .eq("tenant_id", profile.tenant_id);
 
   if ((count ?? 0) === 0) {
-    return isPlatformAdmin(profile) ? "/perfil?setup=new-company" : "/panel?notice=company-setup-pending";
+    return isCompanyAdmin(profile) ? "/perfil?setup=new-company" : "/panel?notice=company-setup-pending";
   }
 
   return "/panel";

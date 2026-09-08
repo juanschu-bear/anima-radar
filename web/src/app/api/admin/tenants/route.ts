@@ -3,12 +3,14 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { deriveWorkspaceReadiness } from "@/lib/workspace-readiness";
 
+const CONTACTED_STATUSES = new Set(["sent", "replied", "converted", "lost"]);
+
 async function requirePlatformAdmin() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: NextResponse.json({ detail: "Authentication required" }, { status: 401 }) };
   const { data: actor, error } = await supabase.from("users").select("tenant_id,platform_admin,role").eq("id", user.id).maybeSingle();
-  if (error || !actor || (actor.platform_admin !== true && actor.role !== "owner")) return { error: NextResponse.json({ detail: "Platform admin access required" }, { status: 403 }) };
+  if (error || !actor || actor.platform_admin !== true) return { error: NextResponse.json({ detail: "Platform admin access required" }, { status: 403 }) };
   return { admin: createAdminClient(), actor, userId: user.id };
 }
 
@@ -29,7 +31,7 @@ export async function GET() {
   const positiveReplies = countByTenant((outcomes ?? []).filter((row) => row.kind === "replied_positive"));
   const prospectCounts = countByTenant(prospects ?? []);
   const approvedProspects = countByTenant((prospects ?? []).filter((row) => row.status === "approved"));
-  const sentProspects = countByTenant((prospects ?? []).filter((row) => row.status === "sent"));
+  const sentProspects = countByTenant((prospects ?? []).filter((row) => CONTACTED_STATUSES.has(row.status)));
   return NextResponse.json({
     tenants: (data ?? []).map((tenant) => {
       const metrics = {

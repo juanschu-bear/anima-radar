@@ -27,6 +27,8 @@ export default function ProfilePage() {
   const [canEdit, setCanEdit] = useState(true);
   const [hasServerProfile, setHasServerProfile] = useState(false);
   const [hasLocalDraft, setHasLocalDraft] = useState(false);
+  const [draftUpdatedAt, setDraftUpdatedAt] = useState<string | null>(null);
+  const [restorableDraft, setRestorableDraft] = useState<Record<string, string> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -53,12 +55,17 @@ export default function ProfilePage() {
         setHasServerProfile(serverProfileExists);
         let draftAnswers: Record<string, string> = {};
         let draftFound = false;
+        let restoredAt: string | null = null;
         if (currentTenantId) {
           const storedDraft = window.localStorage.getItem(draftKey(currentTenantId));
           if (storedDraft) {
             try {
               const parsedDraft: unknown = JSON.parse(storedDraft);
-              if (isAnswerRecord(parsedDraft)) {
+              if (isDraftPayload(parsedDraft)) {
+                draftAnswers = parsedDraft.answers;
+                restoredAt = parsedDraft.updatedAt ?? null;
+                draftFound = Object.keys(parsedDraft.answers).length > 0;
+              } else if (isAnswerRecord(parsedDraft)) {
                 draftAnswers = parsedDraft;
                 draftFound = Object.keys(parsedDraft).length > 0;
               }
@@ -68,8 +75,10 @@ export default function ProfilePage() {
           }
         }
         setHasLocalDraft(draftFound);
+        setDraftUpdatedAt(restoredAt);
         setTenantId(currentTenantId);
-        setAnswers({ ...serverAnswers, ...draftAnswers });
+        setRestorableDraft(serverProfileExists && draftFound ? draftAnswers : null);
+        setAnswers(serverProfileExists ? serverAnswers : draftAnswers);
       })
       .catch((cause) => {
         if (active) setError(cause instanceof Error ? cause.message : text("Could not load Business DNA", "No se pudo cargar el ADN del negocio"));
@@ -89,13 +98,16 @@ export default function ProfilePage() {
   }, [setupCode]);
   const draftNotice = hasLocalDraft
     ? hasServerProfile
-      ? text(`You are editing a browser draft for ${companyName || "this company"}. A previously saved company version also exists in Supabase until you save again.`, `Estás editando un borrador del navegador para ${companyName || "esta empresa"}. También existe una versión guardada en Supabase hasta que vuelvas a guardar.`)
+      ? text(`This company already has a saved Business DNA in Supabase. A separate browser draft is also available${draftUpdatedAt ? ` from ${new Date(draftUpdatedAt).toLocaleString("en-US")}` : ""}.`, `Esta empresa ya tiene un ADN del negocio guardado en Supabase. También hay un borrador separado del navegador${draftUpdatedAt ? ` de ${new Date(draftUpdatedAt).toLocaleString("es-EC")}` : ""}.`)
       : text(`The text below was restored from your browser draft for ${companyName || "this company"}. It is not stored in the company workspace until you press Save Business DNA.`, `El texto de abajo se recuperó de tu borrador del navegador para ${companyName || "esta empresa"}. No se guarda en el espacio de la empresa hasta que pulses Guardar ADN del negocio.`)
     : null;
 
   useEffect(() => {
     if (!tenantId || Object.keys(answers).length === 0) return;
-    window.localStorage.setItem(draftKey(tenantId), JSON.stringify(answers));
+    window.localStorage.setItem(draftKey(tenantId), JSON.stringify({
+      answers,
+      updatedAt: new Date().toISOString(),
+    } satisfies DraftPayload));
   }, [answers, tenantId]);
 
   async function saveProfile() {
@@ -133,11 +145,21 @@ export default function ProfilePage() {
       setSaving(false);
     }
   }
-  return <AppShell><div className="page-toolbar"><SectionHeading eyebrow={text("Business DNA / profile", "ADN del negocio / perfil")} title={text("Tell us what makes you a fit.", "Cuéntanos qué te hace encajar.")} detail={text("Your answers become the real lens AnimaRadar uses for this company. They can be edited at any time.", "Tus respuestas se convierten en el criterio real que AnimaRadar usa para esta empresa. Puedes editarlas en cualquier momento.")} /><ButtonArrow href="/radar">{text("Continue to radar", "Continuar al radar")}</ButtonArrow></div>{setupNotice && <p className="notice" aria-live="polite">{setupNotice}</p>}{draftNotice && <p className="notice" aria-live="polite">{draftNotice}</p>}{!canEdit && <p className="notice" aria-live="polite">{text("Only the platform owner can edit Business DNA for this company. You can still review prospects and outcomes.", "Solo el propietario de la plataforma puede editar el ADN del negocio de esta empresa. Aun así puedes revisar prospectos y resultados.")}</p>}<form id="profile-form" onSubmit={submit} className="form-grid">{questions.map((question, index) => { const key = `answer-${index + 1}`; return <div className="question" key={key}><label><span>{text("Signal", "Señal")} 0{index + 1}</span>{question[language === "es" ? 1 : 0]}</label><textarea required name={key} rows={3} value={answers[key] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [key]: event.target.value }))} placeholder={text("Write it as you would explain it to a sharp colleague…", "Escríbelo como se lo explicarías a un colega perspicaz…")} readOnly={!canEdit} disabled={!canEdit} /></div>; })}</form><div className="form-footer"><span>{text("8 signals · saved as a browser draft until submitted", "8 señales · guardadas como borrador en el navegador hasta enviarlas")}</span><button type="submit" form="profile-form" className="button button-primary" disabled={saving || !canEdit}>{saving ? text("Saving…", "Guardando…") : text("Save Business DNA", "Guardar ADN del negocio")}<span className="button-arrow">↗</span></button></div>{error && <p className="error" aria-live="polite">{error} {sessionExpired && <Link href="/login">{text("Sign in again — your draft is safe", "Vuelve a iniciar sesión — tu borrador está seguro")} ↗</Link>}</p>}{saved && <p className="notice" aria-live="polite">{text("Business DNA saved.", "ADN del negocio guardado.")} <Link href="/radar">{text("Create a scan", "Crear un escaneo")} ↗</Link></p>}</AppShell>;
+  return <AppShell><div className="page-toolbar"><SectionHeading eyebrow={text("Business DNA / profile", "ADN del negocio / perfil")} title={text("Tell us what makes you a fit.", "Cuéntanos qué te hace encajar.")} detail={text("Your answers become the real lens AnimaRadar uses for this company. They can be edited at any time.", "Tus respuestas se convierten en el criterio real que AnimaRadar usa para esta empresa. Puedes editarlas en cualquier momento.")} /><ButtonArrow href="/radar">{text("Continue to radar", "Continuar al radar")}</ButtonArrow></div>{setupNotice && <p className="notice" aria-live="polite">{setupNotice}</p>}{draftNotice && <p className="notice" aria-live="polite">{draftNotice}</p>}{restorableDraft && canEdit && <section className="notice draft-choice" aria-live="polite"><div><strong>{text("A local draft was found for this company.", "Se encontró un borrador local para esta empresa.")}</strong><span>{text("Use the saved company version as the source of truth, or restore the browser draft if that is the newer version you still want.", "Usa la versión guardada de la empresa como fuente de verdad, o restaura el borrador del navegador si esa es la versión más nueva que todavía quieres.")}</span></div><div className="notice-actions"><button type="button" className="button button-ghost" onClick={() => setAnswers(restorableDraft)}>{text("Restore browser draft", "Restaurar borrador del navegador")}</button><button type="button" className="button button-ghost" onClick={() => { if (tenantId) window.localStorage.removeItem(draftKey(tenantId)); setHasLocalDraft(false); setRestorableDraft(null); setDraftUpdatedAt(null); }}>{text("Discard browser draft", "Descartar borrador del navegador")}</button></div></section>}{!canEdit && <p className="notice" aria-live="polite">{text("Only a company admin can edit Business DNA for this company. Standard users can still review prospects and outcomes.", "Solo un administrador de empresa puede editar el ADN del negocio de esta empresa. Los usuarios estándar aún pueden revisar prospectos y resultados.")}</p>}<form id="profile-form" onSubmit={submit} className="form-grid">{questions.map((question, index) => { const key = `answer-${index + 1}`; return <div className="question" key={key}><label><span>{text("Signal", "Señal")} 0{index + 1}</span>{question[language === "es" ? 1 : 0]}</label><textarea required name={key} rows={3} value={answers[key] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [key]: event.target.value }))} placeholder={text("Write it as you would explain it to a sharp colleague…", "Escríbelo como se lo explicarías a un colega perspicaz…")} readOnly={!canEdit} disabled={!canEdit} /></div>; })}</form><div className="form-footer"><span>{text("8 signals · saved as a browser draft until submitted", "8 señales · guardadas como borrador en el navegador hasta enviarlas")}</span><button type="submit" form="profile-form" className="button button-primary" disabled={saving || !canEdit}>{saving ? text("Saving…", "Guardando…") : text("Save Business DNA", "Guardar ADN del negocio")}<span className="button-arrow">↗</span></button></div>{error && <p className="error" aria-live="polite">{error} {sessionExpired && <Link href="/login">{text("Sign in again — your draft is safe", "Vuelve a iniciar sesión — tu borrador está seguro")} ↗</Link>}</p>}{saved && <p className="notice" aria-live="polite">{text("Business DNA saved.", "ADN del negocio guardado.")} <Link href="/radar">{text("Create a scan", "Crear un escaneo")} ↗</Link></p>}</AppShell>;
 }
 
 function draftKey(tenantId: string) {
   return `animaradar:business-dna-draft:${tenantId}`;
+}
+
+type DraftPayload = {
+  answers: Record<string, string>;
+  updatedAt: string;
+};
+
+function isDraftPayload(value: unknown): value is DraftPayload {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  return "answers" in value && isAnswerRecord((value as { answers?: unknown }).answers) && "updatedAt" in value && typeof (value as { updatedAt?: unknown }).updatedAt === "string";
 }
 
 function isAnswerRecord(value: unknown): value is Record<string, string> {

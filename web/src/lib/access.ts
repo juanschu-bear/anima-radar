@@ -4,5 +4,9 @@ export type AccessProfile = {
 };
 
 export function isPlatformAdmin(profile: AccessProfile | null | undefined) {
-  return profile?.platform_admin === true || profile?.role === "owner";
+  return profile?.platform_admin === true;
+}
+
+export function isCompanyAdmin(profile: AccessProfile | null | undefined) {
+  return isPlatformAdmin(profile) || profile?.role === "owner";
 }
