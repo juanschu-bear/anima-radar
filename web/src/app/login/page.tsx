@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { SignalMark } from "@/components/AppShell";
 import { LanguageToggle, useLanguage } from "@/components/LanguageProvider";
 
-type Mode = "member" | "admin" | "reset";
+type Mode = "member" | "admin";
 
 function PasswordToggleIcon({ children }: { children: ReactNode }) {
   return (
@@ -73,7 +73,9 @@ function PasswordField({
         className="password-toggle"
         onClick={() => setVisible((current) => !current)}
         aria-label={
-          visible ? text("Hide password", "Ocultar contraseña") : text("Show password", "Mostrar contraseña")
+          visible
+            ? text("Hide password", "Ocultar contraseña")
+            : text("Show password", "Mostrar contraseña")
         }
         aria-pressed={visible}
       >
@@ -88,6 +90,7 @@ export default function LoginPage() {
   const { text } = useLanguage();
   const [mode, setMode] = useState<Mode>("member");
   const [ownerSetupOpen, setOwnerSetupOpen] = useState<boolean | null>(null);
+  const [showReset, setShowReset] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -100,7 +103,6 @@ export default function LoginPage() {
         if (!response.ok) throw new Error(body.detail);
         if (!live) return;
         setOwnerSetupOpen(body.can_setup === true);
-        if (body.can_setup !== true && mode === "admin") setMode("member");
       })
       .catch(() => {
         if (live) setOwnerSetupOpen(false);
@@ -109,7 +111,27 @@ export default function LoginPage() {
     return () => {
       live = false;
     };
-  }, [mode]);
+  }, []);
+
+  const adminSetupMode = mode === "admin" && ownerSetupOpen === true;
+  const adminSignInMode = mode === "admin" && ownerSetupOpen !== true;
+
+  async function signInWithPassword(login: string, password: string) {
+    const supabase = createClient();
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email: login,
+      password,
+    });
+    if (authError) throw authError;
+    const { data: profile } = data.user
+      ? await supabase
+          .from("users")
+          .select("must_change_password")
+          .eq("id", data.user.id)
+          .maybeSingle()
+      : { data: null };
+    router.push((profile?.must_change_password ? "/account/password?required=1" : "/panel") as Route);
+  }
 
   async function submitMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -119,20 +141,10 @@ export default function LoginPage() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const supabase = createClient();
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: String(form.get("login") ?? "").trim(),
-        password: String(form.get("password") ?? ""),
-      });
-      if (authError) throw authError;
-      const { data: profile } = data.user
-        ? await supabase
-            .from("users")
-            .select("must_change_password")
-            .eq("id", data.user.id)
-            .maybeSingle()
-        : { data: null };
-      router.push((profile?.must_change_password ? "/account/password?required=1" : "/panel") as Route);
+      await signInWithPassword(
+        String(form.get("login") ?? "").trim(),
+        String(form.get("password") ?? ""),
+      );
     } catch {
       setError(text("Invalid login ID or password.", "ID de acceso o contraseña incorrectos."));
     } finally {
@@ -140,7 +152,7 @@ export default function LoginPage() {
     }
   }
 
-  async function submitAdmin(event: FormEvent<HTMLFormElement>) {
+  async function submitAdminSetup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError(null);
@@ -160,19 +172,32 @@ export default function LoginPage() {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail);
-      const supabase = createClient();
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: body.login,
-        password,
-      });
-      if (authError) throw authError;
-      router.push("/panel");
+      await signInWithPassword(body.login, password);
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
           : text("Admin setup failed", "Falló la configuración de administrador"),
       );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitAdminSignIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    const form = new FormData(event.currentTarget);
+
+    try {
+      await signInWithPassword(
+        String(form.get("login") ?? "").trim(),
+        String(form.get("password") ?? ""),
+      );
+    } catch {
+      setError(text("Invalid admin login or password.", "Acceso de admin o contraseña incorrectos."));
     } finally {
       setBusy(false);
     }
@@ -185,7 +210,6 @@ export default function LoginPage() {
     setNotice(null);
     const form = new FormData(event.currentTarget);
     const login = String(form.get("login") ?? "").trim().toLowerCase();
-    const recoveryKey = String(form.get("recovery_key") ?? "").trim();
     const fullName = String(form.get("full_name") ?? "").trim();
     const workspaceName = String(form.get("workspace_name") ?? "").trim();
     const password = String(form.get("password") ?? "");
@@ -208,7 +232,6 @@ export default function LoginPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           login,
-          recovery_key: recoveryKey,
           full_name: fullName,
           workspace_name: workspaceName,
           password,
@@ -223,22 +246,7 @@ export default function LoginPage() {
         );
       }
 
-      const supabase = createClient();
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: login,
-        password,
-      });
-      if (authError) throw authError;
-
-      setNotice(
-        text(
-          "Administrator password updated. Opening your workspace now.",
-          "La contraseña del administrador fue actualizada. Abriendo tu espacio ahora.",
-        ),
-      );
-      window.setTimeout(() => {
-        router.push("/panel");
-      }, 500);
+      await signInWithPassword(login, password);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -250,8 +258,26 @@ export default function LoginPage() {
     }
   }
 
-  const admin = mode === "admin";
-  const reset = mode === "reset";
+  const heading = adminSetupMode
+    ? text("Create the first admin.", "Crea el primer admin.")
+    : mode === "admin"
+      ? text("Admin access.", "Acceso de admin.")
+      : text("Welcome back.", "Bienvenido de nuevo.");
+
+  const detail = adminSetupMode
+    ? text(
+        "Create the first platform administrator and private workspace.",
+        "Crea el primer administrador de la plataforma y el espacio privado.",
+      )
+    : mode === "admin"
+      ? text(
+          "Sign in as the platform owner or create a fresh password if you no longer know it.",
+          "Inicia sesión como propietario de la plataforma o crea una contraseña nueva si ya no la conoces.",
+        )
+      : text(
+          "Use the login ID and password created for you inside AnimaRadar.",
+          "Usa el ID de acceso y la contraseña creados para ti dentro de AnimaRadar.",
+        );
 
   return (
     <main className="login-page">
@@ -264,28 +290,11 @@ export default function LoginPage() {
         </div>
         <div className="login-quote">
           <h1>
-            {admin
-              ? text("Build the first private workspace.", "Crea el primer espacio privado.")
-              : reset
-                ? text("Reset the administrator password safely.", "Restablece la contraseña del administrador de forma segura.")
-                : text("See the signal before it becomes obvious.", "Detecta la señal antes de que sea evidente.")}
+            {mode === "admin"
+              ? text("Private control for the platform owner.", "Control privado para el propietario de la plataforma.")
+              : text("See the signal before it becomes obvious.", "Detecta la señal antes de que sea evidente.")}
           </h1>
-          <p>
-            {admin
-              ? text(
-                  "Initial setup is available only before the first platform administrator exists.",
-                  "La configuración inicial solo está disponible solo antes de que exista el primer administrador de la plataforma.",
-                )
-              : reset
-                ? text(
-                    "No mailbox is required. Recovery can stay inside the platform using your admin identity details instead of email.",
-                    "No se necesita buzón. La recuperación puede mantenerse dentro de la plataforma usando tus datos de identidad de administrador en lugar del correo.",
-                  )
-                : text(
-                    "Use the login ID and password created for you inside AnimaRadar.",
-                    "Usa el ID de acceso y la contraseña creados para ti dentro de AnimaRadar.",
-                  )}
-          </p>
+          <p>{detail}</p>
         </div>
         <small>{text("PRIVATE PLATFORM ACCESS", "ACCESO PRIVADO A LA PLATAFORMA")}</small>
       </section>
@@ -295,11 +304,9 @@ export default function LoginPage() {
           <LanguageToggle />
           <SignalMark small />
           <p className="eyebrow">
-            {admin
-              ? text("First-run setup", "Configuración inicial")
-              : reset
-                ? text("Administrator recovery", "Recuperación de administrador")
-                : text("Workspace access", "Acceso al espacio")}
+            {mode === "admin"
+              ? text("Admin access", "Acceso admin")
+              : text("Workspace access", "Acceso al espacio")}
           </p>
 
           <div className="auth-tabs" role="tablist">
@@ -308,71 +315,30 @@ export default function LoginPage() {
               className={mode === "member" ? "active" : ""}
               onClick={() => {
                 setMode("member");
+                setShowReset(false);
                 setError(null);
                 setNotice(null);
               }}
             >
-              {text("Sign in", "Iniciar sesión")}
-            </button>
-            <button
-              type="button"
-              className={mode === "reset" ? "active" : ""}
-              onClick={() => {
-                setMode("reset");
-                setError(null);
-                setNotice(null);
-              }}
-            >
-              {text("Reset password", "Restablecer contraseña")}
+              {text("User login", "Login usuario")}
             </button>
             <button
               type="button"
               className={mode === "admin" ? "active" : ""}
               onClick={() => {
-                if (ownerSetupOpen !== false) {
-                  setMode("admin");
-                  setError(null);
-                  setNotice(null);
-                }
+                setMode("admin");
+                setError(null);
+                setNotice(null);
               }}
-              disabled={ownerSetupOpen === false}
             >
-              {text("Initial admin", "Admin inicial")}
+              {text("Admin login", "Login admin")}
             </button>
           </div>
 
-          <h1>
-            {admin
-              ? text("Create the owner.", "Crea al propietario.")
-              : reset
-                ? text("Create a new admin password.", "Crea una nueva contraseña de administrador.")
-                : text("Welcome back.", "Bienvenido de nuevo.")}
-          </h1>
+          <h1>{heading}</h1>
 
-          {admin ? (
-            <form onSubmit={submitAdmin}>
-              <label>
-                {text("Full name", "Nombre completo")}
-                <input required name="full_name" autoComplete="name" placeholder="Juan Schubert" />
-              </label>
-              <label>
-                {text("Company name", "Nombre de la empresa")}
-                <input required name="workspace_name" autoComplete="organization" placeholder="Preserva" />
-              </label>
-              <label>
-                {text("Admin password", "Contraseña de administrador")}
-                <PasswordField
-                  name="password"
-                  autoComplete="new-password"
-                  placeholder={text("At least 10 characters", "Al menos 10 caracteres")}
-                />
-              </label>
-              <button className="button button-primary" disabled={busy || ownerSetupOpen === false}>
-                {busy ? text("Creating…", "Creando…") : text("Create administrator", "Crear administrador")}
-              </button>
-            </form>
-          ) : reset ? (
-            <form onSubmit={submitReset}>
+          {mode === "member" ? (
+            <form onSubmit={submitMember}>
               <label>
                 Login ID
                 <input
@@ -380,62 +346,8 @@ export default function LoginPage() {
                   name="login"
                   autoComplete="username"
                   type="text"
-                  placeholder="juan.schubert@animaradar.com"
+                  placeholder="name@animaradar.com"
                 />
-              </label>
-              <label>
-                {text("Full name", "Nombre completo")}
-                <input
-                  required
-                  name="full_name"
-                  autoComplete="name"
-                  type="text"
-                  placeholder="Juan Schubert"
-                />
-              </label>
-              <label>
-                {text("Company name", "Nombre de la empresa")}
-                <input
-                  required
-                  name="workspace_name"
-                  autoComplete="organization"
-                  type="text"
-                  placeholder="Preserva"
-                />
-              </label>
-              <label>
-                {text("Recovery key (optional)", "Clave de recuperación (opcional)")}
-                <PasswordField
-                  name="recovery_key"
-                  autoComplete="one-time-code"
-                  placeholder={text("Leave empty if not configured", "Déjala vacía si no está configurada")}
-                />
-              </label>
-              <label>
-                {text("New password", "Nueva contraseña")}
-                <PasswordField
-                  name="password"
-                  autoComplete="new-password"
-                  placeholder={text("At least 10 characters", "Al menos 10 caracteres")}
-                />
-              </label>
-              <label>
-                {text("Confirm password", "Confirmar contraseña")}
-                <PasswordField
-                  name="confirmation"
-                  autoComplete="new-password"
-                  placeholder={text("Repeat the new password", "Repite la nueva contraseña")}
-                />
-              </label>
-              <button className="button button-primary" disabled={busy}>
-                {busy ? text("Updating…", "Actualizando…") : text("Create new password", "Crear nueva contraseña")}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={submitMember}>
-              <label>
-                Login ID
-                <input required name="login" autoComplete="username" type="text" placeholder="name@animaradar.com" />
               </label>
               <label>
                 {text("Password", "Contraseña")}
@@ -450,6 +362,123 @@ export default function LoginPage() {
                 <span className="button-arrow" />
               </button>
             </form>
+          ) : adminSetupMode ? (
+            <form onSubmit={submitAdminSetup}>
+              <label>
+                {text("Full name", "Nombre completo")}
+                <input required name="full_name" autoComplete="name" placeholder="Juan Schubert" />
+              </label>
+              <label>
+                {text("Company name", "Nombre de la empresa")}
+                <input required name="workspace_name" autoComplete="organization" placeholder="Preserva" />
+              </label>
+              <label>
+                {text("Admin password", "Contraseña de admin")}
+                <PasswordField
+                  name="password"
+                  autoComplete="new-password"
+                  placeholder={text("At least 10 characters", "Al menos 10 caracteres")}
+                />
+              </label>
+              <button className="button button-primary" disabled={busy}>
+                {busy ? text("Creating…", "Creando…") : text("Create admin workspace", "Crear espacio admin")}
+                <span className="button-arrow" />
+              </button>
+            </form>
+          ) : (
+            <>
+              <form onSubmit={submitAdminSignIn}>
+                <label>
+                  {text("Admin login ID", "ID de acceso admin")}
+                  <input
+                    required
+                    name="login"
+                    autoComplete="username"
+                    type="text"
+                    placeholder="juan.schubert@animaradar.com"
+                  />
+                </label>
+                <label>
+                  {text("Admin password", "Contraseña de admin")}
+                  <PasswordField
+                    name="password"
+                    autoComplete="current-password"
+                    placeholder={text("Your admin password…", "Tu contraseña de admin…")}
+                  />
+                </label>
+                <button className="button button-primary" disabled={busy}>
+                  {busy ? text("Signing in…", "Entrando…") : text("Sign in as admin", "Entrar como admin")}
+                  <span className="button-arrow" />
+                </button>
+              </form>
+
+              <div className="auth-secondary">
+                <button
+                  type="button"
+                  className="auth-link-button"
+                  onClick={() => {
+                    setShowReset((current) => !current);
+                    setError(null);
+                    setNotice(null);
+                  }}
+                >
+                  {showReset
+                    ? text("Hide password reset", "Ocultar reset de contraseña")
+                    : text("I forgot my admin password", "Olvidé mi contraseña de admin")}
+                </button>
+                <p>
+                  {text(
+                    "If you are the platform owner, you can create a new password internally.",
+                    "Si eres el propietario de la plataforma, puedes crear una nueva contraseña internamente.",
+                  )}
+                </p>
+              </div>
+
+              {showReset && (
+                <form onSubmit={submitReset} className="password-reset-panel">
+                  <p className="eyebrow">
+                    {text("Admin password reset", "Reset de contraseña admin")}
+                  </p>
+                  <label>
+                    {text("Admin login ID", "ID de acceso admin")}
+                    <input
+                      required
+                      name="login"
+                      autoComplete="username"
+                      type="text"
+                      placeholder="juan.schubert@animaradar.com"
+                    />
+                  </label>
+                  <label>
+                    {text("Full name", "Nombre completo")}
+                    <input required name="full_name" autoComplete="name" placeholder="Juan Schubert" />
+                  </label>
+                  <label>
+                    {text("Company name", "Nombre de la empresa")}
+                    <input required name="workspace_name" autoComplete="organization" placeholder="Preserva" />
+                  </label>
+                  <label>
+                    {text("New password", "Nueva contraseña")}
+                    <PasswordField
+                      name="password"
+                      autoComplete="new-password"
+                      placeholder={text("At least 10 characters", "Al menos 10 caracteres")}
+                    />
+                  </label>
+                  <label>
+                    {text("Confirm new password", "Confirmar nueva contraseña")}
+                    <PasswordField
+                      name="confirmation"
+                      autoComplete="new-password"
+                      placeholder={text("Repeat the new password", "Repite la nueva contraseña")}
+                    />
+                  </label>
+                  <button className="button button-ghost" disabled={busy}>
+                    {busy ? text("Updating…", "Actualizando…") : text("Create new password", "Crear nueva contraseña")}
+                  </button>
+                </form>
+              )}
+            </>
           )}
 
           {notice && (
@@ -464,19 +493,19 @@ export default function LoginPage() {
           )}
 
           <p className="login-fine">
-            {reset
+            {mode === "member"
               ? text(
-                  "Use the same login ID, full name, and company name that were used when the admin workspace was created.",
-                  "Usa el mismo ID de acceso, nombre completo y nombre de empresa que se usaron al crear el espacio de administrador.",
+                  "Use the credentials created for you by the platform administrator.",
+                  "Usa las credenciales creadas para ti por el administrador de la plataforma.",
                 )
-              : ownerSetupOpen === false
+              : ownerSetupOpen === true
                 ? text(
-                    "The first owner already exists. Sign in with an existing login ID.",
-                    "El primer propietario ya existe. Inicia sesión con un ID de acceso existente.",
+                    "This setup closes automatically after the first admin workspace exists.",
+                    "Esta configuración se cierra automáticamente después de que exista el primer espacio admin.",
                   )
                 : text(
-                    "No mailbox is required. Access is managed by the platform administrator.",
-                    "No se necesita buzón de correo. El acceso lo gestiona el administrador de la plataforma.",
+                    "Admin access stays inside the platform. No recovery email is required.",
+                    "El acceso admin se mantiene dentro de la plataforma. No se requiere correo de recuperación.",
                   )}
           </p>
         </div>
