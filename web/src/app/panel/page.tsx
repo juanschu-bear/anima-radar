@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { useLanguage } from "@/components/LanguageProvider";
@@ -34,21 +36,53 @@ type Dashboard = {
   workspace_readiness: { state: string; complete: boolean; next_route: string };
   latest_scan: { id: string; city: string; country: string; radius_m: number; status: string; counts: Record<string, number>; created_at: string } | null;
 };
+type SystemStatus = {
+  actor?: {
+    platform_admin?: boolean;
+  };
+};
+type AdminCompany = {
+  id: string;
+  name: string;
+  default_market_lang: string;
+  has_profile: boolean;
+  metrics?: { prospects: number; outcomes: number; sent: number };
+  workspace_readiness?: { state: string; next_route: string };
+};
 
 export default function PanelPage() {
+  const router = useRouter();
   const { language, text } = useLanguage();
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [system, setSystem] = useState<SystemStatus | null>(null);
+  const [adminCompanies, setAdminCompanies] = useState<AdminCompany[]>([]);
+  const [switchingCompany, setSwitchingCompany] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [queryNoticeCode] = useState<string | null>(() => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("notice") : null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
-    fetch("/api/dashboard", { cache: "no-store" })
-      .then(async (response) => {
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.detail);
-        if (live) setDashboard(body as Dashboard);
+    Promise.all([
+      fetch("/api/dashboard", { cache: "no-store" }),
+      fetch("/api/system/status", { cache: "no-store" }),
+    ])
+      .then(async ([dashboardResponse, systemResponse]) => {
+        const dashboardBody = await dashboardResponse.json();
+        const systemBody = await systemResponse.json();
+        if (!dashboardResponse.ok) throw new Error(dashboardBody.detail);
+        if (!systemResponse.ok) throw new Error(systemBody.detail);
+        if (!live) return;
+        setDashboard(dashboardBody as Dashboard);
+        setSystem(systemBody as SystemStatus);
+
+        if (systemBody.actor?.platform_admin) {
+          const tenantResponse = await fetch("/api/admin/tenants", { cache: "no-store" });
+          const tenantBody = await tenantResponse.json();
+          if (!tenantResponse.ok) throw new Error(tenantBody.detail);
+          if (!live) return;
+          setAdminCompanies(Array.isArray(tenantBody.tenants) ? tenantBody.tenants as AdminCompany[] : []);
+        }
       })
       .catch((cause) => {
         if (live) setError(cause instanceof Error ? cause.message : text("Could not load workspace", "No se pudo cargar el espacio"));
@@ -71,10 +105,34 @@ export default function PanelPage() {
   const locale = language === "es" ? "es-EC" : "en-US";
   const today = new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" }).format(new Date());
   const readinessState = dashboard?.workspace_readiness.state;
+  const isPlatformAdmin = system?.actor?.platform_admin === true;
   const latestScanLabel = dashboard?.latest_scan ? `${dashboard.latest_scan.city} · ${dashboard.latest_scan.status}` : text("Choose market, radius and categories", "Elige mercado, radio y categorías");
   const prospectsLabel = dashboard?.counts.prospects ? `${dashboard.counts.prospects} ${text("available", "disponibles")}` : text("Prospects appear after discovery runs", "Los prospectos aparecen después del descubrimiento");
   const messagesLabel = dashboard?.counts.messages ? `${dashboard.counts.messages} ${text("draft steps prepared", "pasos preparados")}` : text("Sequences appear after prospect approval", "Las secuencias aparecen después de aprobar prospectos");
   const outcomesLabel = dashboard?.counts.outcomes ? `${dashboard.counts.outcomes} ${text("results recorded", "resultados registrados")}` : text("Replies, meetings and orders close the loop", "Respuestas, reuniones y pedidos cierran el ciclo");
+
+  async function openAdminCompany(company: AdminCompany) {
+    setSwitchingCompany(company.id);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/active-tenant", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tenant_id: company.id }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.detail);
+      const nextRoute = typeof body.tenant?.workspace_readiness?.next_route === "string"
+        ? body.tenant.workspace_readiness.next_route
+        : company.workspace_readiness?.next_route ?? "/panel";
+      router.push(`${nextRoute}?tenant=${company.id}` as Route);
+      router.refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : text("Could not open company", "No se pudo abrir la empresa"));
+    } finally {
+      setSwitchingCompany(null);
+    }
+  }
 
   return (
     <AppShell>
@@ -108,6 +166,46 @@ export default function PanelPage() {
         </header>
 
         {error && <p className="error" aria-live="polite">{error}</p>}
+
+        {isPlatformAdmin && (
+          <section className="panel admin-company-rail">
+            <div className="panel-title">
+              <h2>{text("Platform companies", "Empresas de la plataforma")}</h2>
+              <Link href="/admin/companies" className="button button-ghost">
+                {text("Open company admin", "Abrir admin de empresas")}
+              </Link>
+            </div>
+            <div className="admin-company-grid">
+              {adminCompanies.map((company) => (
+                <article className="admin-company-card" key={company.id}>
+                  <div>
+                    <small>{company.default_market_lang?.startsWith("es") ? "Español" : "English"}</small>
+                    <h3>{company.name}</h3>
+                    <p>{readinessTitle(company.workspace_readiness?.state, text)}</p>
+                  </div>
+                  <dl>
+                    <div><dt>{text("Prospects", "Prospectos")}</dt><dd>{company.metrics?.prospects ?? 0}</dd></div>
+                    <div><dt>{text("Sent", "Enviados")}</dt><dd>{company.metrics?.sent ?? 0}</dd></div>
+                    <div><dt>{text("Outcomes", "Resultados")}</dt><dd>{company.metrics?.outcomes ?? 0}</dd></div>
+                  </dl>
+                  <div className="admin-company-actions">
+                    <button
+                      type="button"
+                      className="button button-primary"
+                      disabled={switchingCompany === company.id}
+                      onClick={() => void openAdminCompany(company)}
+                    >
+                      {switchingCompany === company.id ? text("Opening…", "Abriendo…") : actionLabel(company.workspace_readiness?.state, text)}
+                    </button>
+                    <Link href={`/admin/users?tenant=${company.id}` as Route} className="button button-ghost">
+                      {text("Access", "Acceso")}
+                    </Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="observatory-metrics">
           <div className="observatory-metric">
@@ -268,6 +366,25 @@ export default function PanelPage() {
       </div>
     </AppShell>
   );
+}
+
+function actionLabel(state: string | undefined, text: (english: string, spanish: string) => string) {
+  switch (state) {
+    case "needs_profile":
+      return text("Continue setup", "Continuar configuración");
+    case "ready_to_scan":
+      return text("Open radar", "Abrir radar");
+    case "needs_prospects":
+    case "review_ready":
+      return text("Open prospects", "Abrir prospectos");
+    case "outreach_ready":
+      return text("Open outreach", "Abrir contacto");
+    case "awaiting_outcomes":
+    case "learning_live":
+      return text("Open workspace", "Abrir espacio");
+    default:
+      return text("Open company", "Abrir empresa");
+  }
 }
 
 function readinessTitle(state: string | undefined, text: (english: string, spanish: string) => string) {
