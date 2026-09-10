@@ -92,6 +92,25 @@ export default function SendPage() {
   const readyNow = messages.filter((message) => !message.sent_at && (!message.due_at || new Date(message.due_at).getTime() <= now));
   const scheduled = messages.filter((message) => !message.sent_at && message.due_at && new Date(message.due_at).getTime() > now);
   const sent = messages.filter((message) => Boolean(message.sent_at));
+  const firstContactsSentToday = sent.filter((message) => {
+    if (!message.sent_at || message.step !== 1) return false;
+    const sentAt = new Date(message.sent_at);
+    const today = new Date(now);
+    return sentAt.getFullYear() === today.getFullYear()
+      && sentAt.getMonth() === today.getMonth()
+      && sentAt.getDate() === today.getDate();
+  }).length;
+  const ruModeActive = messages.some((message) => {
+    const country = message.prospects?.country?.toUpperCase();
+    return country === "RU" || country === "KZ" || country === "BY";
+  });
+  const countryMix = Array.from(
+    new Set(
+      messages
+        .map((message) => message.prospects?.country?.toUpperCase())
+        .filter((country): country is string => Boolean(country)),
+    ),
+  );
 
   return (
     <AppShell>
@@ -116,6 +135,7 @@ export default function SendPage() {
           <div className="learning-stat"><strong>{readyNow.length}</strong><span>{text("messages can be sent immediately", "mensajes se pueden enviar ahora")}</span></div>
           <div className="learning-stat"><strong>{scheduled.length}</strong><span>{text("scheduled follow-ups", "seguimientos programados")}</span></div>
           <div className="learning-stat"><strong>{sent.length}</strong><span>{text("already marked as sent", "ya marcados como enviados")}</span></div>
+          {ruModeActive && <div className="learning-stat"><strong>{firstContactsSentToday}/30</strong><span>{text("first contacts sent today in RU/KZ/BY mode", "primeros contactos enviados hoy en modo RU/KZ/BY")}</span></div>}
         </section>
 
         <section className="panel learning-hero">
@@ -123,6 +143,12 @@ export default function SendPage() {
           <h2>{text("Edit the wording, then", "Edita el texto y luego")}<br /><em>{text("send it as a human.", "envíalo como humano.")}</em></h2>
           <p>{text("Every saved edit becomes the company record. Follow-ups stay visible with their due dates instead of disappearing into email.", "Cada edición guardada se convierte en el registro de la empresa. Los seguimientos siguen visibles con su fecha prevista en vez de desaparecer en el correo.")}</p>
           <small>{messages[0]?.prospects?.country ? describeChannelPolicy(messages[0].prospects.country, text) : text("Channel policy depends on the prospect market and the contact path you can verify publicly.", "La política del canal depende del mercado del prospecto y de la vía de contacto que puedas verificar públicamente.")}</small>
+          {!!countryMix.length && (
+            <small>
+              {text("Current market mix", "Mercados activos")}: {countryMix.join(" · ")}
+              {ruModeActive ? ` · ${text("Daily first-contact ceiling: 30 per sender", "Techo diario de primeros contactos: 30 por remitente")}` : ""}
+            </small>
+          )}
         </section>
       </div>
 
@@ -155,6 +181,9 @@ export default function SendPage() {
                   <div className="message-record">
                     <p><strong>{message.prospects?.name ?? text("Unknown prospect", "Prospecto desconocido")}</strong></p>
                     <small>{stepLabel(message.step, text)} · {labelChannel(message.channel, text)} · {message.sent_at ? text("sent", "enviado") : message.due_at ? `${text("due", "vence")} ${new Date(message.due_at).toLocaleDateString(language === "es" ? "es-EC" : "en-US")}` : text("ready now", "listo ahora")}</small>
+                    {message.prospects?.country && (
+                      <small>{describeChannelPolicy(message.prospects.country, text)}</small>
+                    )}
                     <div className="settings-fields">
                       <label>{text("Subject", "Asunto")}<input value={currentSubject} onChange={(event) => setDrafts((current) => ({ ...current, [message.id]: { subject: event.target.value, body: currentBody } }))} /></label>
                       <label>{text("Message", "Mensaje")}<textarea rows={6} value={currentBody} onChange={(event) => setDrafts((current) => ({ ...current, [message.id]: { subject: currentSubject, body: event.target.value } }))} /></label>
