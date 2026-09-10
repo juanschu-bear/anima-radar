@@ -229,7 +229,8 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     setNotice(null);
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const login = String(form.get("login") ?? "").trim().toLowerCase();
     const fullName = String(form.get("full_name") ?? "").trim();
     const workspaceName = String(form.get("workspace_name") ?? "").trim();
@@ -266,7 +267,7 @@ export default function LoginPage() {
             : text("Could not reset the password.", "No se pudo restablecer la contraseña."),
         );
       }
-      event.currentTarget.reset();
+      formElement.reset();
       setShowReset(false);
       setNotice(
         mode === "admin"
