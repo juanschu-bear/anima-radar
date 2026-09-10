@@ -76,6 +76,7 @@ export default function ProspectsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const draftBodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const manualFormRef = useRef<HTMLFormElement | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -267,8 +268,7 @@ export default function ProspectsPage() {
     event.preventDefault();
     setSavingManual(true);
     setError(null);
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
+    const form = new FormData(event.currentTarget);
     const payload = {
       name: form.get("name"),
       category: form.get("category"),
@@ -288,7 +288,7 @@ export default function ProspectsPage() {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.detail);
-      formElement.reset();
+      manualFormRef.current?.reset();
       setProspects((current) => [body.prospect, ...current]);
       setSelectedId(body.prospect.id);
       if (body.prospect.draft_preview) {
@@ -386,7 +386,7 @@ export default function ProspectsPage() {
               <h2>{text("Add a company manually", "Añadir una empresa manualmente")}</h2>
               <span className="feature-status feature-status--partial">{text("Fallback", "Fallback")}</span>
             </div>
-            <form className="settings-fields" onSubmit={createManualProspect}>
+            <form ref={manualFormRef} className="settings-fields" onSubmit={createManualProspect}>
               <label>{text("Company name", "Nombre de la empresa")}<input required name="name" placeholder="Preserva" /></label>
               <label>{text("Category", "Categoría")}<input name="category" placeholder={text("e.g. hotels", "p. ej. hoteles")} /></label>
               <label>{text("City", "Ciudad")}<input name="city" placeholder="Quito" /></label>
@@ -575,7 +575,7 @@ export default function ProspectsPage() {
               <h2>{text("Need another company?", "¿Necesitas otra empresa?")}</h2>
               <span className="feature-status">{text("Manual entry", "Entrada manual")}</span>
             </div>
-            <form className="settings-fields manual-prospect-form" onSubmit={createManualProspect}>
+            <form ref={manualFormRef} className="settings-fields manual-prospect-form" onSubmit={createManualProspect}>
               <label>{text("Company name", "Nombre de la empresa")}<input required name="name" placeholder="Preserva" /></label>
               <label>{text("Category", "Categoría")}<input name="category" placeholder={text("e.g. hospitality", "p. ej. hostelería")} /></label>
               <label>{text("City", "Ciudad")}<input name="city" placeholder="Quito" /></label>

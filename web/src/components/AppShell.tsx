@@ -359,17 +359,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <span>{text("Active company", "Empresa activa")}</span>
             <strong>{companyLabel}</strong>
           </div>
-          <small>
-            {isPlatform
-              ? text(
-                  "This is the company currently selected in the sidebar. Every workspace page below uses only this company.",
-                  "Esta es la empresa seleccionada actualmente en la barra lateral. Cada página del espacio de trabajo de abajo usa solo esta empresa.",
-                )
-              : text(
-                  "Everything below belongs only to this company workspace.",
-                  "Todo lo que aparece abajo pertenece solo a este espacio de empresa.",
-                )}
-          </small>
+          <div className="workspace-context-meta">
+            <small>
+              {isPlatform
+                ? text(
+                    "This is the company currently selected in the sidebar. Every workspace page below uses only this company.",
+                    "Esta es la empresa seleccionada actualmente en la barra lateral. Cada página del espacio de trabajo de abajo usa solo esta empresa.",
+                  )
+                : text(
+                    "Everything below belongs only to this company workspace.",
+                    "Todo lo que aparece abajo pertenece solo a este espacio de empresa.",
+                  )}
+            </small>
+            {isPlatform && (
+              <div className="workspace-admin-actions">
+                <Link href={"/admin/companies" as Route} className={pathname === "/admin/companies" ? "is-active" : ""}>
+                  {text("Companies", "Empresas")}
+                </Link>
+                <Link href={"/admin/users" as Route} className={pathname === "/admin/users" ? "is-active" : ""}>
+                  {text("Users", "Usuarios")}
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
 
         <main id="main-content" className="content-area">

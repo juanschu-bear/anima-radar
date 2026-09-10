@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell, { SectionHeading } from "@/components/AppShell";
 import { useLanguage } from "@/components/LanguageProvider";
 
@@ -50,6 +50,7 @@ export default function RadarPage() {
   const [activeScanId, setActiveScanId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const scanFormRef = useRef<HTMLFormElement | null>(null);
 
   const hasLiveProviders = providers.google_places || providers.exa;
   const latestScan = scans[0] ?? null;
@@ -198,7 +199,6 @@ export default function RadarPage() {
     setStarting(true);
     setNotice(null);
     setError(null);
-    const formElement = event.currentTarget;
 
     const categoryList = categories
       .split(",")
@@ -221,7 +221,7 @@ export default function RadarPage() {
       if (!response.ok) throw new Error(body.detail);
 
       const nextScan = body as Scan;
-      formElement.reset();
+      scanFormRef.current?.reset();
       setScans((current) => mergeScanIntoList(current, nextScan));
       setActiveScanId(nextScan.id);
       setNotice(
@@ -351,7 +351,7 @@ export default function RadarPage() {
             </span>
           </div>
 
-          <form className="settings-fields" onSubmit={startScan}>
+          <form ref={scanFormRef} className="settings-fields" onSubmit={startScan}>
             <label>
               {text("City", "Ciudad")}
               <input
