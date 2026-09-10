@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import AppShell, { SectionHeading } from "@/components/AppShell";
 import { useLanguage } from "@/components/LanguageProvider";
 
@@ -57,6 +57,10 @@ export default function RadarPage() {
   const activeScan = useMemo(
     () => (activeScanId ? scans.find((scan) => scan.id === activeScanId) ?? null : null),
     [activeScanId, scans],
+  );
+  const radarNodes = useMemo(
+    () => buildRadarNodes(latestScan, activeScan, hasLiveProviders, language),
+    [activeScan, hasLiveProviders, language, latestScan],
   );
 
   useEffect(() => {
@@ -298,6 +302,100 @@ export default function RadarPage() {
           )}
         </p>
       )}
+
+      <div className="radar-layout radar-layout--hero">
+        <section className="panel map-panel radar-stage">
+          <div className="panel-title">
+            <h2>{text("Live signal field", "Campo de señales en vivo")}</h2>
+            <span className={`feature-status ${hasLiveProviders ? "feature-status--ready" : "feature-status--partial"}`}>
+              {hasLiveProviders ? text("Listening live", "Escuchando en vivo") : text("Manual intelligence", "Inteligencia manual")}
+            </span>
+          </div>
+
+          <div className="map-surface radar-surface">
+            <div className="radar-ring radar-ring--wide" aria-hidden="true" />
+            <div className="radar-ring radar-ring--near" aria-hidden="true" />
+            <div className="radar-sweep" aria-hidden="true" />
+            <div className="map-pin main">{latestScan?.city?.slice(0, 1).toUpperCase() ?? "R"}</div>
+
+            {radarNodes.map((node, index) => (
+              <div
+                key={`${node.label}-${index}`}
+                className={`radar-node radar-node--${node.tone}`}
+                style={{ "--node-left": node.left, "--node-top": node.top } as CSSProperties}
+              >
+                <span className="map-pin small" />
+                <small className="radar-node-label">{node.label}</small>
+              </div>
+            ))}
+
+            <div className="map-caption">
+              <span>
+                {latestScan
+                  ? `${latestScan.city}, ${latestScan.country} · ${Math.round(latestScan.radius_m / 1000)} km`
+                  : text("Choose the market you want to scan", "Elige el mercado que quieres escanear")}
+              </span>
+              <strong>
+                {activeScanId
+                  ? text("Scan running", "Escaneo en marcha")
+                  : latestScan
+                    ? statusLabel(latestScan.status, text)
+                    : text("Awaiting first scan", "Esperando el primer escaneo")}
+              </strong>
+            </div>
+          </div>
+
+          <div className="scan-controls radar-controls">
+            <div className="control-line">
+              <span>{text("Primary search frame", "Marco principal de búsqueda")}</span>
+              <strong>{latestScan?.categories?.slice(0, 2).join(", ") || text("Not defined yet", "Aún no definido")}</strong>
+            </div>
+            <div className="control-line">
+              <span>{text("Discovery mode", "Modo de descubrimiento")}</span>
+              <strong>{hasLiveProviders ? text("Live providers + fallback", "Proveedores reales + fallback") : text("Manual-first fallback", "Fallback manual primero")}</strong>
+            </div>
+            <div className="control-line">
+              <span>{text("Next move", "Siguiente paso")}</span>
+              <strong>{latestScan ? text("Review surfaced companies", "Revisar empresas detectadas") : text("Create the first scan", "Crear el primer escaneo")}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel side-stack radar-story">
+          <div className="stack-content">
+            <p className="eyebrow">{text("Radar reading", "Lectura del radar")}</p>
+            <h2>
+              {text("See the market as", "Ve el mercado como")}
+              <br />
+              <em>{text("a field of signals.", "un campo de señales.")}</em>
+            </h2>
+            <p>
+              {latestScan
+                ? text(
+                    "This surface now reflects the active company, the current city, the selected categories and the latest scan state instead of static mock geometry.",
+                    "Esta superficie ahora refleja la empresa activa, la ciudad actual, las categorías seleccionadas y el último estado del escaneo en lugar de una geometría estática de maqueta.",
+                  )
+                : text(
+                    "The radar becomes concrete after the first scan. Once saved, this stage tracks the live scan state and the business categories you are reading.",
+                    "El radar se vuelve concreto después del primer escaneo. Una vez guardado, este escenario sigue el estado real del escaneo y las categorías de negocio que estás leyendo.",
+                  )}
+            </p>
+
+            <div className="split-list">
+              <div><span>{text("Latest scan", "Último escaneo")}</span><strong>{latestScan ? `${latestScan.city}, ${latestScan.country}` : "—"}</strong></div>
+              <div><span>{text("Signals found", "Señales encontradas")}</span><strong>{latestScan?.counts?.found ?? 0}</strong></div>
+              <div><span>{text("Ready for review", "Listas para revisión")}</span><strong>{latestScan?.counts?.scored ?? 0}</strong></div>
+              <div><span>{text("Selected sources", "Fuentes elegidas")}</span><strong>{formatSourceList(sources, text)}</strong></div>
+            </div>
+
+            <div className="radar-story-actions">
+              <Link href={latestScan ? "/prospectos" : "/perfil"} className="button button-ghost">
+                {latestScan ? text("Open review queue", "Abrir cola de revisión") : text("Review Business DNA", "Revisar ADN del negocio")}
+              </Link>
+            </div>
+          </div>
+        </section>
+      </div>
 
       <div className="learning-layout">
         <section className="panel learning-hero">
@@ -621,4 +719,47 @@ function ProgressStep({
       <strong>{value}</strong>
     </div>
   );
+}
+
+function buildRadarNodes(
+  latestScan: Scan | null,
+  activeScan: Scan | null,
+  hasLiveProviders: boolean,
+  language: "en" | "es",
+) {
+  const categories = (activeScan?.categories ?? latestScan?.categories ?? []).filter(Boolean);
+  const signals = categories.length
+    ? categories.slice(0, 4)
+    : [
+        language === "es" ? "mercado" : "market",
+        language === "es" ? "demanda" : "demand",
+        language === "es" ? "ajuste" : "fit",
+        hasLiveProviders ? (language === "es" ? "fuentes" : "sources") : (language === "es" ? "manual" : "manual"),
+      ];
+
+  const positions = [
+    { left: "22%", top: "30%", tone: "cyan" as const },
+    { left: "74%", top: "24%", tone: "cyan" as const },
+    { left: "78%", top: "68%", tone: "champagne" as const },
+    { left: "30%", top: "74%", tone: "mist" as const },
+  ];
+
+  return signals.map((label, index) => ({
+    ...positions[index % positions.length],
+    label,
+  }));
+}
+
+function formatSourceList(
+  sources: ScanSource[],
+  text: (english: string, spanish: string) => string,
+) {
+  if (!sources.length) return text("none", "ninguna");
+  return sources
+    .map((source) => {
+      if (source === "google_places") return "Google Places";
+      if (source === "exa") return "Exa";
+      return text("Manual", "Manual");
+    })
+    .join(" · ");
 }
