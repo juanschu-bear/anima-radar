@@ -266,8 +266,19 @@ export default function LoginPage() {
             : text("Could not reset the password.", "No se pudo restablecer la contraseña."),
         );
       }
-
-      await signInWithPassword(login, password);
+      event.currentTarget.reset();
+      setShowReset(false);
+      setNotice(
+        mode === "admin"
+          ? text(
+              `Admin password updated for ${login}. Sign in above with the new password.`,
+              `La contraseña admin de ${login} fue actualizada. Inicia sesión arriba con la nueva contraseña.`,
+            )
+          : text(
+              `User password updated for ${login}. Sign in above with the new password.`,
+              `La contraseña de usuario de ${login} fue actualizada. Inicia sesión arriba con la nueva contraseña.`,
+            ),
+      );
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -352,6 +363,13 @@ export default function LoginPage() {
           </small>
         </div>
       </div>
+
+      {notice && (
+        <div className="auth-recovery-result" aria-live="polite">
+          <strong>{text("Password updated", "Contraseña actualizada")}</strong>
+          <p>{notice}</p>
+        </div>
+      )}
 
       {showReset && (
         <form onSubmit={submitReset} className="password-reset-panel">
