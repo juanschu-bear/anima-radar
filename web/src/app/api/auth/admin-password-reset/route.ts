@@ -37,9 +37,8 @@ export async function POST(request: Request) {
   const admin = createAdminClient();
   const { data: profile, error: profileError } = await admin
     .from("users")
-    .select("id,email,platform_admin,full_name,tenant_id")
+    .select("id,email,platform_admin,full_name,tenant_id,role")
     .eq("email", login)
-    .eq("platform_admin", true)
     .maybeSingle();
 
   if (profileError) {
@@ -47,7 +46,7 @@ export async function POST(request: Request) {
   }
   if (!profile) {
     return NextResponse.json(
-      { detail: "No platform admin was found for that login ID" },
+      { detail: "No account was found for that login ID" },
       { status: 404 },
     );
   }
@@ -84,7 +83,7 @@ export async function POST(request: Request) {
 
   if (!authorized) {
     return NextResponse.json(
-      { detail: "Recovery details do not match this admin account" },
+      { detail: "Recovery details do not match this account" },
       { status: 403 },
     );
   }
@@ -106,7 +105,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ detail: userUpdateError.message }, { status: 502 });
   }
 
-  return NextResponse.json({ ok: true, login });
+  return NextResponse.json({
+    ok: true,
+    login,
+    account_type: profile.platform_admin ? "platform_admin" : profile.role ?? "member",
+  });
 }
 
 function normalize(value: string) {

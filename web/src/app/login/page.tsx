@@ -115,6 +115,27 @@ export default function LoginPage() {
 
   const adminSetupMode = mode === "admin" && ownerSetupOpen === true;
   const adminSignInMode = mode === "admin" && ownerSetupOpen !== true;
+  const resetAudience = mode === "admin"
+    ? {
+        button: text("I forgot my admin password", "Olvidé mi contraseña de admin"),
+        title: text("Reset admin password", "Restablecer contraseña de admin"),
+        detail: text(
+          "Use your internal login details to create a new password without leaving the platform.",
+          "Usa tus datos internos de acceso para crear una nueva contraseña sin salir de la plataforma.",
+        ),
+        loginLabel: text("Admin login ID", "ID de acceso admin"),
+        passwordLabel: text("New admin password", "Nueva contraseña de admin"),
+      }
+    : {
+        button: text("I forgot my user password", "Olvidé mi contraseña de usuario"),
+        title: text("Reset user password", "Restablecer contraseña de usuario"),
+        detail: text(
+          "If your access was created inside AnimaRadar, you can create a fresh password here too.",
+          "Si tu acceso fue creado dentro de AnimaRadar, también puedes crear una contraseña nueva aquí.",
+        ),
+        loginLabel: text("User login ID", "ID de acceso usuario"),
+        passwordLabel: text("New user password", "Nueva contraseña de usuario"),
+      };
 
   async function signInWithPassword(login: string, password: string) {
     const supabase = createClient();
@@ -279,6 +300,112 @@ export default function LoginPage() {
           "Usa el ID de acceso y la contraseña creados para ti dentro de AnimaRadar.",
         );
 
+  const recoveryCard = !adminSetupMode ? (
+    <div className="auth-recovery-card">
+      <div className="auth-recovery-header">
+        <div>
+          <span className="feature-status feature-status--partial">
+            {mode === "admin"
+              ? text("Private admin recovery", "Recuperación privada de admin")
+              : text("Internal password help", "Ayuda interna de contraseña")}
+          </span>
+          <h2>{resetAudience.title}</h2>
+          <p>{resetAudience.detail}</p>
+        </div>
+        <button
+          type="button"
+          className={`auth-recovery-toggle${showReset ? " is-open" : ""}`}
+          onClick={() => {
+            setShowReset((current) => !current);
+            setError(null);
+            setNotice(null);
+          }}
+          aria-expanded={showReset}
+        >
+          <span>{resetAudience.button}</span>
+          <i aria-hidden="true">{showReset ? "−" : "+"}</i>
+        </button>
+      </div>
+
+      <div className="auth-recovery-points">
+        <div>
+          <strong>{text("No email step", "Sin paso por email")}</strong>
+          <small>
+            {text(
+              "Everything stays inside the platform.",
+              "Todo se mantiene dentro de la plataforma.",
+            )}
+          </small>
+        </div>
+        <div>
+          <strong>{text("Identity match", "Verificación de identidad")}</strong>
+          <small>
+            {mode === "admin"
+              ? text(
+                  "Admin login ID, full name, and company must match.",
+                  "El ID admin, el nombre completo y la empresa deben coincidir.",
+                )
+              : text(
+                  "User login ID, full name, and company must match.",
+                  "El ID de usuario, el nombre completo y la empresa deben coincidir.",
+                )}
+          </small>
+        </div>
+      </div>
+
+      {showReset && (
+        <form onSubmit={submitReset} className="password-reset-panel">
+          <p className="eyebrow">
+            {mode === "admin"
+              ? text("Admin password reset", "Reset de contraseña admin")
+              : text("User password reset", "Reset de contraseña usuario")}
+          </p>
+          <label>
+            {resetAudience.loginLabel}
+            <input
+              required
+              name="login"
+              autoComplete="username"
+              type="text"
+              placeholder={
+                mode === "admin"
+                  ? "juan.schubert@animaradar.com"
+                  : "name@animaradar.com"
+              }
+            />
+          </label>
+          <label>
+            {text("Full name", "Nombre completo")}
+            <input required name="full_name" autoComplete="name" placeholder="Juan Schubert" />
+          </label>
+          <label>
+            {text("Company name", "Nombre de la empresa")}
+            <input required name="workspace_name" autoComplete="organization" placeholder="Preserva" />
+          </label>
+          <label>
+            {resetAudience.passwordLabel}
+            <PasswordField
+              name="password"
+              autoComplete="new-password"
+              placeholder={text("At least 10 characters", "Al menos 10 caracteres")}
+            />
+          </label>
+          <label>
+            {text("Confirm new password", "Confirmar nueva contraseña")}
+            <PasswordField
+              name="confirmation"
+              autoComplete="new-password"
+              placeholder={text("Repeat the new password", "Repite la nueva contraseña")}
+            />
+          </label>
+          <button className="button button-ghost" disabled={busy}>
+            {busy ? text("Updating…", "Actualizando…") : text("Create new password", "Crear nueva contraseña")}
+          </button>
+        </form>
+      )}
+    </div>
+  ) : null;
+
   return (
     <main className="login-page">
       <section className="login-visual">
@@ -338,30 +465,33 @@ export default function LoginPage() {
           <h1>{heading}</h1>
 
           {mode === "member" ? (
-            <form onSubmit={submitMember}>
-              <label>
-                Login ID
-                <input
-                  required
-                  name="login"
-                  autoComplete="username"
-                  type="text"
-                  placeholder="name@animaradar.com"
-                />
-              </label>
-              <label>
-                {text("Password", "Contraseña")}
-                <PasswordField
-                  name="password"
-                  autoComplete="current-password"
-                  placeholder={text("Your password…", "Tu contraseña…")}
-                />
-              </label>
-              <button className="button button-primary" disabled={busy}>
-                {busy ? text("Signing in…", "Entrando…") : text("Sign in", "Iniciar sesión")}
-                <span className="button-arrow" />
-              </button>
-            </form>
+            <>
+              <form onSubmit={submitMember}>
+                <label>
+                  Login ID
+                  <input
+                    required
+                    name="login"
+                    autoComplete="username"
+                    type="text"
+                    placeholder="name@animaradar.com"
+                  />
+                </label>
+                <label>
+                  {text("Password", "Contraseña")}
+                  <PasswordField
+                    name="password"
+                    autoComplete="current-password"
+                    placeholder={text("Your password…", "Tu contraseña…")}
+                  />
+                </label>
+                <button className="button button-primary" disabled={busy}>
+                  {busy ? text("Signing in…", "Entrando…") : text("Sign in", "Iniciar sesión")}
+                  <span className="button-arrow" />
+                </button>
+              </form>
+              {recoveryCard}
+            </>
           ) : adminSetupMode ? (
             <form onSubmit={submitAdminSetup}>
               <label>
@@ -411,73 +541,7 @@ export default function LoginPage() {
                   <span className="button-arrow" />
                 </button>
               </form>
-
-              <div className="auth-secondary">
-                <button
-                  type="button"
-                  className="auth-link-button"
-                  onClick={() => {
-                    setShowReset((current) => !current);
-                    setError(null);
-                    setNotice(null);
-                  }}
-                >
-                  {showReset
-                    ? text("Hide password reset", "Ocultar reset de contraseña")
-                    : text("I forgot my admin password", "Olvidé mi contraseña de admin")}
-                </button>
-                <p>
-                  {text(
-                    "If you are the platform owner, you can create a new password internally.",
-                    "Si eres el propietario de la plataforma, puedes crear una nueva contraseña internamente.",
-                  )}
-                </p>
-              </div>
-
-              {showReset && (
-                <form onSubmit={submitReset} className="password-reset-panel">
-                  <p className="eyebrow">
-                    {text("Admin password reset", "Reset de contraseña admin")}
-                  </p>
-                  <label>
-                    {text("Admin login ID", "ID de acceso admin")}
-                    <input
-                      required
-                      name="login"
-                      autoComplete="username"
-                      type="text"
-                      placeholder="juan.schubert@animaradar.com"
-                    />
-                  </label>
-                  <label>
-                    {text("Full name", "Nombre completo")}
-                    <input required name="full_name" autoComplete="name" placeholder="Juan Schubert" />
-                  </label>
-                  <label>
-                    {text("Company name", "Nombre de la empresa")}
-                    <input required name="workspace_name" autoComplete="organization" placeholder="Preserva" />
-                  </label>
-                  <label>
-                    {text("New password", "Nueva contraseña")}
-                    <PasswordField
-                      name="password"
-                      autoComplete="new-password"
-                      placeholder={text("At least 10 characters", "Al menos 10 caracteres")}
-                    />
-                  </label>
-                  <label>
-                    {text("Confirm new password", "Confirmar nueva contraseña")}
-                    <PasswordField
-                      name="confirmation"
-                      autoComplete="new-password"
-                      placeholder={text("Repeat the new password", "Repite la nueva contraseña")}
-                    />
-                  </label>
-                  <button className="button button-ghost" disabled={busy}>
-                    {busy ? text("Updating…", "Actualizando…") : text("Create new password", "Crear nueva contraseña")}
-                  </button>
-                </form>
-              )}
+              {recoveryCard}
             </>
           )}
 
@@ -495,8 +559,8 @@ export default function LoginPage() {
           <p className="login-fine">
             {mode === "member"
               ? text(
-                  "Use the credentials created for you by the platform administrator.",
-                  "Usa las credenciales creadas para ti por el administrador de la plataforma.",
+                  "Use the credentials created for you by the platform administrator, or open the reset panel if you forgot the password.",
+                  "Usa las credenciales creadas para ti por el administrador de la plataforma, o abre el panel de recuperación si olvidaste la contraseña.",
                 )
               : ownerSetupOpen === true
                 ? text(
