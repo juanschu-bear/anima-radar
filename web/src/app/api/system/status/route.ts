@@ -46,6 +46,7 @@ export async function GET() {
       supabase_server: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
       google_places: Boolean(process.env.GOOGLE_PLACES_API_KEY),
       exa: Boolean(process.env.EXA_API_KEY),
+      twogis: Boolean(process.env.TWOGIS_API_KEY),
       radar_api_url: process.env.RADAR_API_URL ?? null,
       manual_prospect_fallback: true,
     },

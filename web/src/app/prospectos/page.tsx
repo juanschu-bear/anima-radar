@@ -597,6 +597,7 @@ export default function ProspectsPage() {
 function sourceLabel(source: string, text: (english: string, spanish: string) => string) {
   if (source === "google_places") return "Google Places";
   if (source === "exa") return "Exa";
+  if (source === "2gis") return "2GIS";
   if (source === "manual") return text("Manual entry", "Entrada manual");
   return source;
 }

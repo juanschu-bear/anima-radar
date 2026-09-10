@@ -67,6 +67,7 @@ const GOOGLE_FIELD_MASK = [
 ].join(",");
 
 const EXA_SEARCH_ENDPOINT = "https://api.exa.ai/search";
+const TWOGIS_SEARCH_ENDPOINT = "https://catalog.api.2gis.com/3.0/items";
 
 export async function processScanPipeline({
   admin,
@@ -429,6 +430,7 @@ async function discoverProspects(scan: ScanRecord, defaultMarketLang: string) {
   const results: ProspectSeed[] = [];
   const googleKey = process.env.GOOGLE_PLACES_API_KEY;
   const exaKey = process.env.EXA_API_KEY;
+  const twogisKey = process.env.TWOGIS_API_KEY;
 
   if (sources.has("google_places") && googleKey) {
     results.push(...await searchGooglePlaces({
@@ -440,6 +442,10 @@ async function discoverProspects(scan: ScanRecord, defaultMarketLang: string) {
 
   if (sources.has("exa") && exaKey) {
     results.push(...await searchExa({ apiKey: exaKey, scan }));
+  }
+
+  if (sources.has("2gis") && twogisKey) {
+    results.push(...await searchTwoGis({ apiKey: twogisKey, scan, defaultMarketLang }));
   }
 
   return dedupeProspectSeeds(results);
@@ -783,6 +789,82 @@ async function searchExa({
   return records;
 }
 
+async function searchTwoGis({
+  apiKey,
+  scan,
+  defaultMarketLang,
+}: {
+  apiKey: string;
+  scan: ScanRecord;
+  defaultMarketLang: string;
+}) {
+  const center = await geocodeCityCenter(scan.city, scan.country);
+  const locale = defaultMarketLang.startsWith("ru") ? "ru_RU" : defaultMarketLang.startsWith("es") ? "es_ES" : "en_US";
+  const records: ProspectSeed[] = [];
+
+  for (const category of scan.categories.slice(0, 6)) {
+    const params = new URLSearchParams({
+      key: apiKey,
+      q: `${category}`,
+      point: `${center.lng},${center.lat}`,
+      radius: String(Math.max(1000, scan.radius_m)),
+      page: "1",
+      page_size: "30",
+      locale,
+      fields: "items.point,items.contact_groups,items.reviews,items.rubrics,items.org",
+    });
+
+    const response = await fetch(`${TWOGIS_SEARCH_ENDPOINT}?${params.toString()}`, {
+      cache: "no-store",
+      headers: { accept: "application/json" },
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`2GIS error: ${detail.slice(0, 180)}`);
+    }
+
+    const payload = await response.json() as {
+      result?: {
+        items?: Array<Record<string, unknown>>;
+      };
+    };
+
+    for (const item of payload.result?.items ?? []) {
+      const contacts = readTwoGisContacts(item.contact_groups);
+      const point = isObject(item.point) ? item.point : null;
+      const rubrics = Array.isArray(item.rubrics) ? item.rubrics : [];
+      const categoryLabel = rubrics
+        .map((entry) => (isObject(entry) && typeof entry.name === "string" ? entry.name : null))
+        .find(Boolean);
+
+      records.push({
+        source: "2gis",
+        source_id: String(item.id ?? randomUUID()),
+        name: typeof item.name === "string" ? item.name : "Unnamed place",
+        category: categoryLabel ?? category,
+        address: typeof item.address_name === "string" ? item.address_name : null,
+        city: scan.city,
+        country: scan.country,
+        website: normalizeUrl(contacts.website),
+        phone: normalizeOptional(contacts.phone),
+        email: normalizeOptional(contacts.email),
+        instagram: normalizeOptional(contacts.instagram),
+        rating: readTwoGisRating(item),
+        review_count: readTwoGisReviewCount(item),
+        raw: item,
+        enrichment: { mode: "2gis-live" },
+      });
+
+      if (point && typeof point.lat === "number" && typeof point.lon === "number") {
+        records[records.length - 1]!.raw.point = { lat: point.lat, lon: point.lon };
+      }
+    }
+  }
+
+  return records;
+}
+
 async function ensureManualScan(admin: AdminClient, tenantId: string, city?: string, country?: string) {
   const safeCountry = /^[A-Za-z]{2}$/.test(country ?? "") ? String(country).toUpperCase() : "US";
   const primary = await admin
@@ -922,6 +1004,75 @@ function inferEmailFromText(value: string) {
 function inferInstagram(value: string) {
   const match = value.match(/instagram\.com\/([A-Za-z0-9._]+)/i);
   return match?.[1] ? `@${match[1]}` : null;
+}
+
+async function geocodeCityCenter(city: string, country: string) {
+  const params = new URLSearchParams({
+    city,
+    country,
+    format: "jsonv2",
+    limit: "1",
+  });
+
+  const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+    cache: "no-store",
+    headers: {
+      accept: "application/json",
+      "user-agent": "anima-radar/1.0",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("Could not resolve the selected city");
+  }
+
+  const payload = await response.json() as Array<{ lat?: string; lon?: string }>;
+  const first = Array.isArray(payload) ? payload[0] : null;
+  const lat = Number(first?.lat ?? NaN);
+  const lng = Number(first?.lon ?? NaN);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new Error("Could not resolve the selected city");
+  }
+
+  return { lat, lng };
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readTwoGisContacts(value: unknown) {
+  const result = { phone: null as string | null, email: null as string | null, website: null as string | null, instagram: null as string | null };
+  if (!Array.isArray(value)) return result;
+
+  for (const group of value) {
+    if (!isObject(group) || !Array.isArray(group.contacts)) continue;
+    for (const contact of group.contacts) {
+      if (!isObject(contact)) continue;
+      const type = typeof contact.type === "string" ? contact.type : "";
+      const rawValue = typeof contact.value === "string" ? contact.value : typeof contact.url === "string" ? contact.url : "";
+      if (!rawValue) continue;
+      if (!result.phone && /phone|cell|whatsapp|tel/i.test(type)) result.phone = rawValue;
+      if (!result.email && /email|mail/i.test(type)) result.email = rawValue;
+      if (!result.website && /site|website|web/i.test(type)) result.website = rawValue;
+      if (!result.instagram && /instagram/i.test(rawValue)) result.instagram = inferInstagram(rawValue);
+    }
+  }
+
+  return result;
+}
+
+function readTwoGisRating(value: Record<string, unknown>) {
+  if (typeof value.rating === "number") return value.rating;
+  if (isObject(value.reviews) && typeof value.reviews.general_rating === "number") return value.reviews.general_rating;
+  return null;
+}
+
+function readTwoGisReviewCount(value: Record<string, unknown>) {
+  if (typeof value.reviews_count === "number") return value.reviews_count;
+  if (isObject(value.reviews) && typeof value.reviews.items_count === "number") return value.reviews.items_count;
+  return null;
 }
 
 function extractCity(address: string | null, fallbackCity: string) {

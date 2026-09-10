@@ -14,6 +14,7 @@ type SystemStatus = {
     supabase_server: boolean;
     google_places: boolean;
     exa: boolean;
+    twogis: boolean;
     radar_api_url: string | null;
     manual_prospect_fallback: boolean;
   };
@@ -90,6 +91,7 @@ export default function SettingsPage() {
     [text("Server admin access", "Acceso admin del servidor"), system?.providers.supabase_server ? text("Connected", "Conectado") : text("Missing", "Falta")],
     [text("Google Places", "Google Places"), system?.providers.google_places ? text("Live discovery enabled", "Descubrimiento activo") : text("Not configured", "No configurado")],
     [text("Exa search", "Búsqueda Exa"), system?.providers.exa ? text("Live discovery enabled", "Descubrimiento activo") : text("Not configured", "No configurado")],
+    [text("2GIS search", "Búsqueda 2GIS"), system?.providers.twogis ? text("Live discovery enabled", "Descubrimiento activo") : text("Not configured", "No configurado")],
     [text("Manual prospect fallback", "Fallback manual de prospectos"), system?.providers.manual_prospect_fallback ? text("Always available", "Siempre disponible") : text("Off", "Apagado")],
     [text("Current actor", "Actor actual"), system?.actor.platform_admin ? text("Platform admin", "Admin de plataforma") : system?.actor.role === "owner" ? text("Company admin", "Admin de empresa") : text("Standard user", "Usuario estándar")],
   ];

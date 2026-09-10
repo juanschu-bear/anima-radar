@@ -15,6 +15,7 @@ export async function GET() {
     providers: {
       google_places: Boolean(process.env.GOOGLE_PLACES_API_KEY),
       exa: Boolean(process.env.EXA_API_KEY),
+      twogis: Boolean(process.env.TWOGIS_API_KEY),
       manual: true,
     },
     compatibility: {
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
       .map((source) => source.trim())
       .filter(Boolean)
     : [];
-  const allowedSources = ["google_places", "exa", "manual"];
+  const allowedSources = ["google_places", "exa", "2gis", "manual"];
   const sources = [...new Set(requestedSources.filter((source) => allowedSources.includes(source)))];
   if (!city || !country) return NextResponse.json({ detail: "City and country are required" }, { status: 400 });
   if (!Number.isFinite(radius) || radius < 1000 || radius > 100000) return NextResponse.json({ detail: "Radius must be between 1 and 100 km" }, { status: 400 });

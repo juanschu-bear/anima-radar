@@ -20,8 +20,8 @@ type Scan = {
   error?: string | null;
 };
 
-type ScanSource = "google_places" | "exa" | "manual";
-type ProviderState = { google_places: boolean; exa: boolean; manual: boolean };
+type ScanSource = "google_places" | "exa" | "2gis" | "manual";
+type ProviderState = { google_places: boolean; exa: boolean; twogis: boolean; manual: boolean };
 type SearchPlan = {
   suggested_cities?: string[];
   category_keywords?: string[];
@@ -49,7 +49,7 @@ export default function RadarPage() {
         new URLSearchParams(window.location.search).get("setup")?.startsWith("business-dna"),
     ),
   );
-  const [providers, setProviders] = useState<ProviderState>({ google_places: false, exa: false, manual: true });
+  const [providers, setProviders] = useState<ProviderState>({ google_places: false, exa: false, twogis: false, manual: true });
   const [profile, setProfile] = useState<BusinessProfile>(null);
   const [usesCreatedAtFallback, setUsesCreatedAtFallback] = useState(false);
   const [city, setCity] = useState("");
@@ -64,7 +64,7 @@ export default function RadarPage() {
   const [error, setError] = useState<string | null>(null);
   const scanFormRef = useRef<HTMLFormElement | null>(null);
 
-  const hasLiveProviders = providers.google_places || providers.exa;
+  const hasLiveProviders = providers.google_places || providers.exa || providers.twogis;
   const latestScan = scans[0] ?? null;
   const searchPlan = profile?.icp?.search_plan ?? null;
   const suggestedCategories = searchPlan?.category_keywords?.filter(Boolean).slice(0, 6) ?? [];
@@ -96,7 +96,7 @@ export default function RadarPage() {
         if (!live) return;
 
         const nextScans = Array.isArray(scanBody.scans) ? (scanBody.scans as Scan[]) : [];
-        const nextProviders = scanBody.providers ?? { google_places: false, exa: false, manual: true };
+        const nextProviders = scanBody.providers ?? { google_places: false, exa: false, twogis: false, manual: true };
         const unfinishedScan = nextScans.find((scan) => !["done", "failed"].includes(scan.status)) ?? null;
 
         setScans(nextScans);
@@ -585,6 +585,14 @@ export default function RadarPage() {
                   onChange={(checked) => setSources((current) => toggleSource(current, "exa", checked))}
                 />
                 <SourceToggle
+                  label="2GIS"
+                  description={text("Best for Russia, Kazakhstan and Belarus where local directory coverage matters.", "Ideal para Rusia, Kazajistán y Bielorrusia, donde importa la cobertura del directorio local.")}
+                  unavailableText={text("This provider is not configured in this deployment yet.", "Este proveedor todavía no está configurado en esta implementación.")}
+                  checked={sources.includes("2gis")}
+                  enabled={providers.twogis}
+                  onChange={(checked) => setSources((current) => toggleSource(current, "2gis", checked))}
+                />
+                <SourceToggle
                   label={text("Manual fallback", "Fallback manual")}
                   description={text("Lets you continue even if no live providers are active.", "Te permite continuar incluso si no hay proveedores activos.")}
                   unavailableText={text("This provider is not configured in this deployment yet.", "Este proveedor todavía no está configurado en esta implementación.")}
@@ -740,6 +748,7 @@ function resolveDefaultSources(providers: ProviderState) {
   const next: ScanSource[] = [];
   if (providers.google_places) next.push("google_places");
   if (providers.exa) next.push("exa");
+  if (providers.twogis) next.push("2gis");
   if (!next.length && providers.manual) next.push("manual");
   return next;
 }
@@ -849,6 +858,6 @@ function appendToken(current: string, value: string) {
   return current.trim() ? `${current.trim()}, ${next}` : next;
 }
 
-function isKnownSource(source: string): source is ScanSource | "2gis" {
+function isKnownSource(source: string): source is ScanSource {
   return source === "google_places" || source === "exa" || source === "manual" || source === "2gis";
 }
