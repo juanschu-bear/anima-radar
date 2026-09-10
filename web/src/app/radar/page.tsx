@@ -22,6 +22,17 @@ type Scan = {
 
 type ScanSource = "google_places" | "exa" | "manual";
 type ProviderState = { google_places: boolean; exa: boolean; manual: boolean };
+type SearchPlan = {
+  suggested_cities?: string[];
+  category_keywords?: string[];
+  sources?: string[];
+};
+type BusinessProfile = {
+  raw_answers?: Record<string, string> | null;
+  icp?: {
+    search_plan?: SearchPlan | null;
+  } | null;
+} | null;
 
 export default function RadarPage() {
   const router = useRouter();
@@ -39,6 +50,7 @@ export default function RadarPage() {
     ),
   );
   const [providers, setProviders] = useState<ProviderState>({ google_places: false, exa: false, manual: true });
+  const [profile, setProfile] = useState<BusinessProfile>(null);
   const [usesCreatedAtFallback, setUsesCreatedAtFallback] = useState(false);
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("");
@@ -54,6 +66,9 @@ export default function RadarPage() {
 
   const hasLiveProviders = providers.google_places || providers.exa;
   const latestScan = scans[0] ?? null;
+  const searchPlan = profile?.icp?.search_plan ?? null;
+  const suggestedCategories = searchPlan?.category_keywords?.filter(Boolean).slice(0, 6) ?? [];
+  const suggestedCities = searchPlan?.suggested_cities?.filter(Boolean).slice(0, 4) ?? [];
   const activeScan = useMemo(
     () => (activeScanId ? scans.find((scan) => scan.id === activeScanId) ?? null : null),
     [activeScanId, scans],
@@ -69,12 +84,15 @@ export default function RadarPage() {
     Promise.all([
       fetch("/api/scans", { cache: "no-store" }),
       fetch("/api/workspace", { cache: "no-store" }),
+      fetch("/api/profiles", { cache: "no-store" }),
     ])
-      .then(async ([scanResponse, workspaceResponse]) => {
+      .then(async ([scanResponse, workspaceResponse, profileResponse]) => {
         const scanBody = await scanResponse.json();
         const workspaceBody = await workspaceResponse.json();
+        const profileBody = await profileResponse.json().catch(() => ({}));
         if (!scanResponse.ok) throw new Error(scanBody.detail);
         if (!workspaceResponse.ok) throw new Error(workspaceBody.detail);
+        if (!profileResponse.ok) throw new Error(profileBody.detail);
         if (!live) return;
 
         const nextScans = Array.isArray(scanBody.scans) ? (scanBody.scans as Scan[]) : [];
@@ -86,6 +104,7 @@ export default function RadarPage() {
         setSources(resolveDefaultSources(nextProviders));
         setUsesCreatedAtFallback(scanBody.compatibility?.scans_created_at_fallback === true);
         setCompanyName(workspaceBody.tenant?.name ?? "");
+        setProfile((profileBody.profile as BusinessProfile) ?? null);
         setActiveScanId(unfinishedScan?.id ?? null);
       })
       .catch((cause) => {
@@ -225,7 +244,6 @@ export default function RadarPage() {
       if (!response.ok) throw new Error(body.detail);
 
       const nextScan = body as Scan;
-      scanFormRef.current?.reset();
       setScans((current) => mergeScanIntoList(current, nextScan));
       setActiveScanId(nextScan.id);
       setNotice(
@@ -385,8 +403,43 @@ export default function RadarPage() {
               <div><span>{text("Latest scan", "Último escaneo")}</span><strong>{latestScan ? `${latestScan.city}, ${latestScan.country}` : "—"}</strong></div>
               <div><span>{text("Signals found", "Señales encontradas")}</span><strong>{latestScan?.counts?.found ?? 0}</strong></div>
               <div><span>{text("Ready for review", "Listas para revisión")}</span><strong>{latestScan?.counts?.scored ?? 0}</strong></div>
-              <div><span>{text("Selected sources", "Fuentes elegidas")}</span><strong>{formatSourceList(sources, text)}</strong></div>
+              <div><span>{text("Selected sources", "Fuentes elegidas")}</span><strong>{formatSourceList(sources, searchPlan?.sources ?? [], text)}</strong></div>
             </div>
+
+            {!latestScan && (suggestedCategories.length > 0 || suggestedCities.length > 0) && (
+              <div className="radar-plan">
+                <div>
+                  <span>{text("Suggested categories", "Categorías sugeridas")}</span>
+                  <div className="tag-list">
+                    {suggestedCategories.map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        className="tag tag-button"
+                        onClick={() => setCategories((current) => appendToken(current, item))}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <span>{text("Suggested markets", "Mercados sugeridos")}</span>
+                  <div className="tag-list">
+                    {suggestedCities.map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        className="tag tag-button"
+                        onClick={() => setCity(item)}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="radar-story-actions">
               <Link href={latestScan ? "/prospectos" : "/perfil"} className="button button-ghost">
@@ -450,6 +503,24 @@ export default function RadarPage() {
           </div>
 
           <form ref={scanFormRef} className="settings-fields" onSubmit={startScan}>
+            {!!suggestedCategories.length && !categories && (
+              <div className="plan-strip">
+                <strong>{text("Search plan from Business DNA", "Plan de búsqueda desde el ADN del negocio")}</strong>
+                <small>{text("Tap a suggestion to fill the scan faster.", "Toca una sugerencia para rellenar el escaneo más rápido.")}</small>
+                <div className="tag-list">
+                  {suggestedCategories.map((item) => (
+                    <button
+                      key={`scan-${item}`}
+                      type="button"
+                      className="tag tag-button"
+                      onClick={() => setCategories((current) => appendToken(current, item))}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <label>
               {text("City", "Ciudad")}
               <input
@@ -752,14 +823,32 @@ function buildRadarNodes(
 
 function formatSourceList(
   sources: ScanSource[],
+  plannedSources: string[],
   text: (english: string, spanish: string) => string,
 ) {
-  if (!sources.length) return text("none", "ninguna");
-  return sources
+  const activeSources = sources.length ? sources : plannedSources.filter(isKnownSource);
+  if (!activeSources.length) return text("none", "ninguna");
+  return activeSources
     .map((source) => {
       if (source === "google_places") return "Google Places";
       if (source === "exa") return "Exa";
+      if (source === "2gis") return "2GIS";
       return text("Manual", "Manual");
     })
     .join(" · ");
+}
+
+function appendToken(current: string, value: string) {
+  const next = value.trim();
+  if (!next) return current;
+  const existing = current
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  if (existing.includes(next.toLowerCase())) return current;
+  return current.trim() ? `${current.trim()}, ${next}` : next;
+}
+
+function isKnownSource(source: string): source is ScanSource | "2gis" {
+  return source === "google_places" || source === "exa" || source === "manual" || source === "2gis";
 }
