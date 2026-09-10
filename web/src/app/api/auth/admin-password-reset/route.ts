@@ -13,11 +13,15 @@ export async function POST(request: Request) {
   const payload = await request.json() as {
     login?: string;
     recovery_key?: string;
+    full_name?: string;
+    workspace_name?: string;
     password?: string;
   };
 
   const login = String(payload.login ?? "").trim().toLowerCase();
   const recoveryKey = String(payload.recovery_key ?? "").trim();
+  const fullName = String(payload.full_name ?? "").trim();
+  const workspaceName = String(payload.workspace_name ?? "").trim();
   const password = String(payload.password ?? "");
   const configuredRecoveryKey = process.env.ADMIN_RECOVERY_KEY?.trim();
 
@@ -30,23 +34,10 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (!configuredRecoveryKey) {
-    return NextResponse.json(
-      {
-        detail:
-          "Admin password recovery is not configured yet. Add ADMIN_RECOVERY_KEY in the deployment environment first.",
-      },
-      { status: 503 },
-    );
-  }
-  if (!recoveryKey || !safeEqual(recoveryKey, configuredRecoveryKey)) {
-    return NextResponse.json({ detail: "Recovery key is invalid" }, { status: 403 });
-  }
-
   const admin = createAdminClient();
   const { data: profile, error: profileError } = await admin
     .from("users")
-    .select("id,email,platform_admin")
+    .select("id,email,platform_admin,full_name,tenant_id")
     .eq("email", login)
     .eq("platform_admin", true)
     .maybeSingle();
@@ -58,6 +49,43 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { detail: "No platform admin was found for that login ID" },
       { status: 404 },
+    );
+  }
+
+  let authorized = false;
+
+  if (configuredRecoveryKey && recoveryKey) {
+    authorized = safeEqual(recoveryKey, configuredRecoveryKey);
+  } else {
+    if (!fullName || !workspaceName) {
+      return NextResponse.json(
+        {
+          detail:
+            "Full name and company name are required when no recovery key is configured.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const { data: tenant, error: tenantError } = await admin
+      .from("tenants")
+      .select("id,name")
+      .eq("id", profile.tenant_id)
+      .maybeSingle();
+
+    if (tenantError) {
+      return NextResponse.json({ detail: tenantError.message }, { status: 502 });
+    }
+
+    authorized =
+      normalize(profile.full_name ?? "") === normalize(fullName) &&
+      normalize(tenant?.name ?? "") === normalize(workspaceName);
+  }
+
+  if (!authorized) {
+    return NextResponse.json(
+      { detail: "Recovery details do not match this admin account" },
+      { status: 403 },
     );
   }
 
@@ -79,4 +107,13 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ ok: true, login });
+}
+
+function normalize(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }

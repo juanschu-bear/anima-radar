@@ -186,6 +186,8 @@ export default function LoginPage() {
     const form = new FormData(event.currentTarget);
     const login = String(form.get("login") ?? "").trim().toLowerCase();
     const recoveryKey = String(form.get("recovery_key") ?? "").trim();
+    const fullName = String(form.get("full_name") ?? "").trim();
+    const workspaceName = String(form.get("workspace_name") ?? "").trim();
     const password = String(form.get("password") ?? "");
     const confirmation = String(form.get("confirmation") ?? "");
 
@@ -207,6 +209,8 @@ export default function LoginPage() {
         body: JSON.stringify({
           login,
           recovery_key: recoveryKey,
+          full_name: fullName,
+          workspace_name: workspaceName,
           password,
         }),
       });
@@ -274,8 +278,8 @@ export default function LoginPage() {
                 )
               : reset
                 ? text(
-                    "No mailbox is required. Recovery stays inside the platform and uses an internal recovery key instead of email.",
-                    "No se necesita buzón. La recuperación se mantiene dentro de la plataforma y usa una clave interna de recuperación en lugar de correo.",
+                    "No mailbox is required. Recovery can stay inside the platform using your admin identity details instead of email.",
+                    "No se necesita buzón. La recuperación puede mantenerse dentro de la plataforma usando tus datos de identidad de administrador en lugar del correo.",
                   )
                 : text(
                     "Use the login ID and password created for you inside AnimaRadar.",
@@ -380,11 +384,31 @@ export default function LoginPage() {
                 />
               </label>
               <label>
-                {text("Recovery key", "Clave de recuperación")}
+                {text("Full name", "Nombre completo")}
+                <input
+                  required
+                  name="full_name"
+                  autoComplete="name"
+                  type="text"
+                  placeholder="Juan Schubert"
+                />
+              </label>
+              <label>
+                {text("Company name", "Nombre de la empresa")}
+                <input
+                  required
+                  name="workspace_name"
+                  autoComplete="organization"
+                  type="text"
+                  placeholder="Preserva"
+                />
+              </label>
+              <label>
+                {text("Recovery key (optional)", "Clave de recuperación (opcional)")}
                 <PasswordField
                   name="recovery_key"
                   autoComplete="one-time-code"
-                  placeholder={text("Internal recovery key", "Clave interna de recuperación")}
+                  placeholder={text("Leave empty if not configured", "Déjala vacía si no está configurada")}
                 />
               </label>
               <label>
@@ -442,12 +466,12 @@ export default function LoginPage() {
           <p className="login-fine">
             {reset
               ? text(
-                  "For security, this reset works only with the internal recovery key configured for the deployment.",
-                  "Por seguridad, este restablecimiento solo funciona con la clave interna de recuperación configurada para el deployment.",
+                  "Use the same login ID, full name, and company name that were used when the admin workspace was created.",
+                  "Usa el mismo ID de acceso, nombre completo y nombre de empresa que se usaron al crear el espacio de administrador.",
                 )
               : ownerSetupOpen === false
                 ? text(
-                    "The first owner already exists. Sign in with an existing login ID below.",
+                    "The first owner already exists. Sign in with an existing login ID.",
                     "El primer propietario ya existe. Inicia sesión con un ID de acceso existente.",
                   )
                 : text(
